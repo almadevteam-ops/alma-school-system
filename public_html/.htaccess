@@ -1,0 +1,17 @@
+# כפיית HTTPS
+RewriteEngine On
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+Options -Indexes
+
+# חסימת קבצים רגישים
+<FilesMatch "(^\.|\.ini$|\.sql$|\.log$|\.bak$|\.md$|\.txt$|\.zip$)">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "no-referrer"
+</IfModule>

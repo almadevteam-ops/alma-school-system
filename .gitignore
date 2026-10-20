@@ -1,0 +1,15 @@
+# לעולם לא להעלות סיסמאות, נתונים או גיבויים
+private/config.php
+private/sessions/*
+private/storage/*
+!private/sessions/.gitkeep
+!private/sessions/.htaccess
+!private/storage/.gitkeep
+!private/storage/.htaccess
+*.sql.gz
+*.bak
+*.zip
+backups/
+data/
+.env
+.DS_Store
