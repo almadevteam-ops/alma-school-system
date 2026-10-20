@@ -1,6 +1,7 @@
 <?php
 // התקנה חד-פעמית. אחרי שהיא מסתיימת – למחוק את הקובץ הזה מהשרת (הוא ינסה למחוק את עצמו).
 require __DIR__ . '/../private/lib/bootstrap.php';
+if (file_exists(PRIV . '/installed.flag')) fail_page(403, 'המערכת כבר הותקנה.');
 $key = (string)cfg('setup_key', '');
 if (strlen($key) < 30 || str_starts_with($key, 'CHANGE_ME')) fail_page(500, 'יש להגדיר setup_key ארוך ואקראי בקובץ config.php.');
 $msg = ''; $err = ''; $done = false;
@@ -20,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     db()->prepare('INSERT INTO users (username, display_name, pass_hash, role, created_at) VALUES (?,?,?,?,?)')->execute([$un, $nm, hash_pw($pw), 'admin', now()]);
     db()->prepare('INSERT INTO audit_log (created_at, user_id, username, action, entity, detail, ip) VALUES (?,?,?,?,?,?,?)')
       ->execute([now(), null, $un, 'install', 'system', 'התקנה ראשונית', client_ip()]);
+    @file_put_contents(PRIV . '/installed.flag', now());
     $done = true; $deleted = @unlink(__FILE__);
   }
 }

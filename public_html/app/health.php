@@ -4,6 +4,7 @@ require_role(['admin']);
 $checks = [];
 $checks['גרסת PHP'] = [PHP_VERSION, version_compare(PHP_VERSION, '8.1.0', '>=')];
 foreach (['pdo_mysql', 'mbstring', 'openssl', 'fileinfo', 'gd', 'zip', 'intl', 'sodium'] as $x) $checks['תוסף ' . $x] = [extension_loaded($x) ? 'קיים' : 'חסר', extension_loaded($x)];
+$checks['גרסת המערכת'] = [is_file(PRIV . '/VERSION') ? trim((string)file_get_contents(PRIV . '/VERSION')) : 'לא ידועה', true];
 $checks['חיבור HTTPS'] = [is_https() ? 'כן' : 'לא', is_https()];
 $checks['גרסת מסד נתונים'] = [(string)db()->query('SELECT VERSION()')->fetchColumn(), true];
 $checks['תיקיית סשנים כתיבה'] = [is_writable(PRIV . '/sessions') ? 'כן' : 'לא', is_writable(PRIV . '/sessions')];
