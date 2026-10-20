@@ -24,8 +24,9 @@ jobs:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASS: ${{ secrets.FTP_PASS }}
         run: |
-          lftp -e "set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes; open -u \"$FTP_USER\",\"$FTP_PASS\" \"$FTP_HOST\"; cls -1; bye" | tee /tmp/root.txt
-          grep -q "public_html" /tmp/root.txt || { echo "::error::לא נמצאה תיקיית public_html בשורש חשבון ה-FTP. יש לוודא שתיקיית הבית של החשבון היא תיקיית הבית הראשית."; exit 1; }
+          set -o pipefail
+          lftp -e "set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes; open -u \"$FTP_USER\",\"$FTP_PASS\" \"$FTP_HOST\"; cls -1; bye" 2>&1 | tee /tmp/root.txt || { echo "::error::ההתחברות ל-FTP נכשלה (ראו את ההודעה למעלה: תעודת SSL, משתמש או סיסמה)."; exit 1; }
+          grep -q "public_html" /tmp/root.txt || { echo "::error::ההתחברות הצליחה אבל לא נמצאה תיקיית public_html בשורש חשבון ה-FTP. יש לוודא שתיקיית הבית של החשבון היא תיקיית הבית הראשית."; exit 1; }
 
       - name: Upload (no deletions, config and data are never touched)
         env:
