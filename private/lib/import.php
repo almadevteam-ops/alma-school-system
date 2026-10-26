@@ -40,6 +40,8 @@ function import_header_map(): array {
     'status' => ['סטטוס', 'מצב', 'status'],
     'notes' => ['הערות', 'הערה', 'notes'],
   ];
+  foreach (IMPORT_FIELDS as $k => $lbl) $a[$k][] = $lbl;
+  foreach (['f_name' => 'שם אב', 'f_phone' => 'טלפון אב', 'm_name' => 'שם אם', 'm_phone' => 'טלפון אם'] as $k => $lbl) $a[$k][] = $lbl;
   $m = [];
   foreach ($a as $k => $list) foreach ($list as $x) $m[import_norm_header($x)] = $k;
   return $m;
