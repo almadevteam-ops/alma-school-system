@@ -23,16 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if (password_needs_rehash($row['pass_hash'], defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT)) {
         db()->prepare('UPDATE users SET pass_hash = ? WHERE id = ?')->execute([hash_pw($pw), $row['id']]);
       }
-      session_regenerate_id(true);
-      $_SESSION['uid'] = (int)$row['id'];
-      $_SESSION['user'] = ['id' => (int)$row['id'], 'username' => $row['username'], 'name' => $row['display_name'], 'role' => $row['role']];
-      $_SESSION['pwv'] = (int)$row['pw_ver'];
-      $_SESSION['t0'] = $_SESSION['last'] = time();
-      $_SESSION['ua'] = hash('sha256', (string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
-      $_SESSION['csrf'] = bin2hex(random_bytes(32));
-      db()->prepare('UPDATE users SET last_login = ? WHERE id = ?')->execute([now(), $row['id']]);
-      audit('login', 'user', (string)$row['id']);
-      redirect('students.php');
+      if (!empty($row['totp_enabled'])) {
+        session_regenerate_id(true);
+        $_SESSION['p2'] = ['id' => (int)$row['id'], 't' => time()];
+        redirect('login2.php');
+      }
+      finish_login($row);
     }
     $err = 'שם משתמש או סיסמה שגויים.';
   }

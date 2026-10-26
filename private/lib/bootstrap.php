@@ -25,6 +25,11 @@ set_exception_handler(function (Throwable $t) {
   fail_page(500, 'אירעה שגיאה. נסו שוב מאוחר יותר.');
 });
 
+require_once __DIR__ . '/crypto.php';
+require_once __DIR__ . '/totp.php';
+require_once __DIR__ . '/migrate.php';
+require_once __DIR__ . '/files.php';
+
 // ---- HTTPS ----
 if (cfg('force_https', true) && !is_https()) {
   $h = cfg('host') ?: ($_SERVER['HTTP_HOST'] ?? '');
@@ -108,15 +113,34 @@ function user(): ?array { return $_SESSION['user'] ?? null; }
 function require_login(): array {
   $u = user();
   if (!$u) redirect('login.php');
-  $st = db()->prepare('SELECT id, username, display_name, role, active, pw_ver FROM users WHERE id = ?');
+  $page = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
+  if (migrations_pending()) {
+    if (($u['role'] ?? '') === 'admin' && $page !== 'update.php') redirect('update.php');
+    if (($u['role'] ?? '') !== 'admin') fail_page(503, 'המערכת בעדכון. נסו שוב בעוד כמה דקות.');
+  }
+  $st = db()->prepare('SELECT id, username, display_name, role, active, pw_ver, totp_enabled FROM users WHERE id = ?');
   $st->execute([$u['id']]);
   $row = $st->fetch();
   if (!$row || !(int)$row['active'] || (int)$row['pw_ver'] !== (int)($_SESSION['pwv'] ?? -1)) {
     session_wipe();
     redirect('login.php');
   }
-  $_SESSION['user'] = ['id' => (int)$row['id'], 'username' => $row['username'], 'name' => $row['display_name'], 'role' => $row['role']];
+  $_SESSION['user'] = ['id' => (int)$row['id'], 'username' => $row['username'], 'name' => $row['display_name'], 'role' => $row['role'], 'totp' => (int)$row['totp_enabled']];
+  if (cfg('require_2fa', true) && !(int)$row['totp_enabled'] && !in_array($page, ['security.php', 'logout.php'], true)) redirect('security.php');
   return $_SESSION['user'];
+}
+function finish_login(array $row): never {
+  session_regenerate_id(true);
+  unset($_SESSION['p2']);
+  $_SESSION['uid'] = (int)$row['id'];
+  $_SESSION['user'] = ['id' => (int)$row['id'], 'username' => $row['username'], 'name' => $row['display_name'], 'role' => $row['role']];
+  $_SESSION['pwv'] = (int)$row['pw_ver'];
+  $_SESSION['t0'] = $_SESSION['last'] = time();
+  $_SESSION['ua'] = hash('sha256', (string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
+  $_SESSION['csrf'] = bin2hex(random_bytes(32));
+  db()->prepare('UPDATE users SET last_login = ? WHERE id = ?')->execute([now(), $row['id']]);
+  audit('login', 'user', (string)$row['id']);
+  redirect('students.php');
 }
 function require_role(array $roles): array {
   $u = require_login();
@@ -143,7 +167,7 @@ function page_head(string $title, bool $nav = true): void {
   echo '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
      . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="stylesheet" href="/app/assets/style.css"></head><body>';
   if ($nav && ($u = user())) {
-    echo '<header class="top"><b>עלמא – ניהול תלמידות</b><nav><a href="students.php">תלמידות</a>';
+    echo '<header class="top"><b>עלמא – ניהול תלמידות</b><nav><a href="students.php">תלמידות</a><a href="security.php">אבטחה</a>';
     if ($u['role'] === 'admin') echo '<a href="users.php">משתמשים</a><a href="audit.php">יומן פעולות</a><a href="health.php">בדיקת מערכת</a>';
     echo '</nav><form method="post" action="logout.php" class="inl">' . csrf_field() . '<span class="mu">' . e($u['name']) . '</span> <button class="lnk">יציאה</button></form></header>';
   }

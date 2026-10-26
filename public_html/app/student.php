@@ -29,7 +29,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($act === 'delete') {
     require_role(['admin']);
     if (!$row || empty($_POST['ok'])) fail_page(400, 'נדרש אישור מחיקה.');
+    $fs = db()->prepare('SELECT stored FROM student_files WHERE student_id = ?'); $fs->execute([$id]);
+    $storedList = array_column($fs->fetchAll(), 'stored');
     db()->prepare('DELETE FROM students WHERE id = ?')->execute([$id]);
+    foreach ($storedList as $sn) remove_stored_file($sn);
     audit('delete', 'student', (string)$id, $row['name']);
     redirect('students.php');
   }
@@ -62,8 +65,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $row = array_merge($row ?: [], $d);   // keep typed values on error
 }
 if (!empty($_GET['saved'])) $msg = 'נשמר.';
+if (!empty($_GET['m'])) $msg = mb_substr((string)$_GET['m'], 0, 300);
+if (!empty($_GET['e'])) $err = mb_substr((string)$_GET['e'], 0, 500);
 if ($row && $_SERVER['REQUEST_METHOD'] === 'GET' && can_see_ids()) audit('view', 'student', (string)$id, 'צפייה בכרטיס');
 $ro = !can_edit();
+$sfiles = [];
+if ($id && can_see_ids()) { $q = db()->prepare('SELECT id, kind, orig_name, mime, size, created_at FROM student_files WHERE student_id = ? ORDER BY id'); $q->execute([$id]); $sfiles = $q->fetchAll(); }
 $val = fn($k) => $row[$k] ?? '';
 page_head($row ? $row['name'] : 'תלמידה חדשה');
 ?>
@@ -89,6 +96,42 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <a class="btn sec" href="students.php">חזרה</a>
   <?php if ($id && !valid_il_id((string)$val('idn')) && $val('idn') !== '' && can_see_ids()) echo '<p class="mu">שימו לב: מספר הזהות שהוזן לא עובר בדיקת תקינות.</p>'; ?>
 </form>
+<?php if ($id && can_see_ids()): ?>
+<div class="card">
+  <h2>מסמכים</h2>
+  <?php if ($sfiles): ?>
+  <div class="sc"><table>
+    <tr><th>סוג</th><th>קובץ</th><th>גודל</th><th>הועלה</th><th></th></tr>
+    <?php foreach ($sfiles as $f): ?>
+    <tr>
+      <td><?= e(FILE_KINDS[$f['kind']] ?? $f['kind']) ?></td>
+      <td><?= e($f['orig_name']) ?></td>
+      <td><?= e(number_format($f['size'] / 1024, 0)) ?> KB</td>
+      <td><?= e($f['created_at']) ?></td>
+      <td>
+        <a class="btn sec" href="file.php?id=<?= (int)$f['id'] ?>" target="_blank" rel="noopener">צפייה</a>
+        <a class="btn sec" href="file.php?id=<?= (int)$f['id'] ?>&dl=1">הורדה</a>
+        <?php if ($u['role'] === 'admin'): ?>
+        <form method="post" action="file_upload.php" class="inl"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="delete"><input type="hidden" name="fid" value="<?= (int)$f['id'] ?>"><button class="dg">מחיקה</button></form>
+        <?php endif; ?>
+      </td>
+    </tr>
+    <?php endforeach; ?>
+  </table></div>
+  <?php else: ?><p class="mu">עדיין לא הועלו מסמכים.</p><?php endif; ?>
+  <?php if (can_edit()): ?>
+  <form method="post" action="file_upload.php" enctype="multipart/form-data" style="margin-top:12px">
+    <?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>">
+    <div class="bar">
+      <label>סוג מסמך<select name="kind"><?php foreach (FILE_KINDS as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
+      <label>קבצים (JPG / PNG / PDF, עד 10MB)<input type="file" name="f[]" multiple required accept="image/jpeg,image/png,image/webp,application/pdf"></label>
+      <button>העלאה</button>
+    </div>
+    <p class="mu">הקבצים נשמרים מוצפנים. כל צפייה והורדה נרשמות ביומן הפעולות.</p>
+  </form>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
 <?php if ($id && $u['role'] === 'admin'): ?>
 <form method="post" class="card">
   <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="delete">

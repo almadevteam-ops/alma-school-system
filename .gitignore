@@ -13,3 +13,5 @@ backups/
 data/
 .env
 .DS_Store
+private/app.key
+private/app.key.tmp*

@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   elseif ($e = pw_ok($pw)) $err = $e;
   else {
     foreach (array_filter(array_map('trim', explode(';', file_get_contents(PRIV . '/schema.sql')))) as $sql) db()->exec($sql);
+    migrate();
     db()->prepare('INSERT INTO users (username, display_name, pass_hash, role, created_at) VALUES (?,?,?,?,?)')->execute([$un, $nm, hash_pw($pw), 'admin', now()]);
     db()->prepare('INSERT INTO audit_log (created_at, user_id, username, action, entity, detail, ip) VALUES (?,?,?,?,?,?,?)')
       ->execute([now(), null, $un, 'install', 'system', 'התקנה ראשונית', client_ip()]);
