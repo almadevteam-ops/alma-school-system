@@ -86,18 +86,20 @@ page_head('ייבוא תלמידות');
   <h2>תצוגה מקדימה</h2>
   <p>סה״כ <?= count($prev['rows']) ?> שורות: <b><?= $ok ?></b> ייובאו (מתוכן <?= $warn ?> עם אזהרה), <b><?= $dup ?></b> יידולגו ככפולות, <b><?= $bad ?></b> עם שגיאה ויידולגו.</p>
   <?php if ($prev['unknown']): ?><p class="mu">עמודות שלא זוהו ולא ייובאו: <?= e(implode(', ', $prev['unknown'])) ?></p><?php endif; ?>
-  <div class="sc"><table>
-    <tr><th>שורה</th><th>שם</th><th>כיתה</th><th>עיר</th><th>ת״ז</th><th>מצב</th></tr>
-    <?php foreach ($prev['rows'] as $r): $d = $r['d'];
-      $state = $r['errors'] ? '<span class="er">שגיאה: ' . e(implode(', ', $r['errors'])) . '</span>' : ($r['dup'] ? '<span class="mu">דילוג: ' . e($r['dup']) . '</span>' : ($r['warns'] ? '<span class="mu">אזהרה: ' . e(implode(', ', $r['warns'])) . '</span>' : 'תקין')); ?>
-    <tr><td><?= (int)$r['line'] ?></td><td><?= e($d['name']) ?></td><td><?= e($d['grade']) ?></td><td><?= e($d['city']) ?></td><td><?= $d['idn'] === '' ? '' : e(str_repeat('•', max(0, strlen($d['idn']) - 3)) . substr($d['idn'], -3)) ?></td><td><?= $state ?></td></tr>
-    <?php endforeach; ?>
-  </table></div>
-  <form method="post" style="margin-top:12px">
+  <form method="post" style="margin:12px 0">
     <?= csrf_field() ?><input type="hidden" name="token" value="<?= e($token) ?>">
     <button name="act" value="confirm"<?= $ok ? '' : ' disabled' ?>>אישור וייבוא <?= $ok ?> תלמידות</button>
     <button name="act" value="cancel" class="sec">ביטול</button>
   </form>
+  <p class="mu">להלן שורות עם אזהרה, שגיאה או דילוג, ועוד 15 שורות תקינות לדוגמה (שאר השורות התקינות ייובאו גם הן).</p>
+  <div class="sc"><table>
+    <tr><th>שורה</th><th>שם</th><th>כיתה</th><th>עיר</th><th>ת״ז</th><th>מצב</th></tr>
+    <?php $shown = 0; foreach ($prev['rows'] as $r): $d = $r['d'];
+      if (!$r['errors'] && !$r['dup'] && !$r['warns'] && $shown++ >= 15) continue;
+      $state = $r['errors'] ? '<span class="er">שגיאה: ' . e(implode(', ', $r['errors'])) . '</span>' : ($r['dup'] ? '<span class="mu">דילוג: ' . e($r['dup']) . '</span>' : ($r['warns'] ? '<span class="mu">אזהרה: ' . e(implode(', ', $r['warns'])) . '</span>' : 'תקין')); ?>
+    <tr><td><?= (int)$r['line'] ?></td><td><?= e($d['name']) ?></td><td><?= e($d['grade']) ?></td><td><?= e($d['city']) ?></td><td><?= $d['idn'] === '' ? '' : e(str_repeat('•', max(0, strlen($d['idn']) - 3)) . substr($d['idn'], -3)) ?></td><td><?= $state ?></td></tr>
+    <?php endforeach; ?>
+  </table></div>
 </div>
 <?php endif;
 page_foot();
