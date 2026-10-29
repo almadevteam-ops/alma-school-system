@@ -149,3 +149,49 @@ function payer_label(array $f): string {
   if (($f['payer_kind'] ?? 'parents') === 'org') return (string)($f['payer'] ?? '');
   return PAYER_KINDS[$f['payer_kind'] ?? 'parents'] ?? 'הורים';
 }
+
+function month_in(string $s): ?int {
+  $s = trim($s); if ($s === '') return null;
+  if (ctype_digit($s) && (int)$s >= 1 && (int)$s <= 12) return (int)$s;
+  foreach (SCHOOL_MONTHS as $k => $v) if ($s === $v) return $k;
+  return null;
+}
+const PAYIMP_HEADERS = ['student' => ['תלמידה', 'שם', 'תלמידות'], 'month' => ['חודש'], 'amount' => ['סכום'], 'date' => ['תאריך', 'תאריך תשלום'], 'method' => ['אמצעי', 'אמצעי תשלום', 'צורת תשלום'], 'ref' => ['אסמכתא'], 'note' => ['הערה', 'הערות']];
+function payimp_parse(string $raw): array {
+  $out = ['fatal' => null, 'rows' => []];
+  $raw = import_decode($raw);
+  $first = explode("\n", $raw, 2)[0] ?? ''; $delim = ','; $best = substr_count($first, ',');
+  foreach ([';', "\t"] as $d) { $c = substr_count($first, $d); if ($c > $best) { $best = $c; $delim = $d; } }
+  $fh = fopen('php://memory', 'r+'); fwrite($fh, $raw); rewind($fh);
+  $hdr = fgetcsv($fh, 0, $delim, '"', '');
+  if (!$hdr) return array_merge($out, ['fatal' => 'הקובץ ריק.']);
+  $al = []; $map = [];
+  foreach (PAYIMP_HEADERS as $k => $l) foreach ($l as $x) $al[import_norm_header($x)] = $k;
+  foreach ($hdr as $i => $h) { $n = import_norm_header((string)$h); if (isset($al[$n])) $map[$al[$n]] = $i; }
+  if (!isset($map['student']) || !isset($map['amount'])) return array_merge($out, ['fatal' => 'חובה שיהיו עמודות "תלמידה" ו"סכום".']);
+  $nm = [];
+  foreach (db()->query('SELECT s.id, s.name, s.grade, s.cls, s.family_id, f.months FROM students s LEFT JOIN families f ON f.id = s.family_id')->fetchAll() as $s) $nm[norm_name($s['name'])][] = $s;
+  $methods = array_flip(PAY_METHODS); $line = 1;
+  while (($r = fgetcsv($fh, 0, $delim, '"', '')) !== false) {
+    $line++; if (count($r) === 1 && trim((string)$r[0]) === '') continue;
+    $g = fn($k) => isset($map[$k]) ? trim((string)($r[$map[$k]] ?? '')) : '';
+    $row = ['line' => $line, 'errors' => [], 'family_id' => null, 'student' => $g('student'), 'month' => null, 'amount' => 0.0, 'date' => null, 'method' => 'other', 'ref' => mb_substr($g('ref'), 0, 60), 'note' => mb_substr($g('note'), 0, 255)];
+    $n = $row['student']; $hint = '';
+    if (preg_match('/^(.*?)\s*[\[(]([^\])]{1,10})[\])]\s*$/u', $n, $hm)) { $n = trim($hm[1]); $hint = trim($hm[2]); }
+    $c = $nm[norm_name($n)] ?? [];
+    if (count($c) > 1 && $hint !== '') { $c2 = array_values(array_filter($c, fn($x) => $x['grade'] === $hint || $x['cls'] === $hint)); if ($c2) $c = $c2; }
+    if (count($c) !== 1) $row['errors'][] = count($c) ? 'כמה תלמידות בשם: ' . $n : 'לא נמצאה תלמידה: ' . $n;
+    elseif (!$c[0]['family_id']) $row['errors'][] = 'אין תיק גבייה ל' . $n;
+    else $row['family_id'] = (int)$c[0]['family_id'];
+    $a = money_in($g('amount')); if ($a === null || $a <= 0) $row['errors'][] = 'סכום לא תקין: ' . $g('amount'); else $row['amount'] = $a;
+    if ($g('month') !== '') { $m = month_in($g('month')); if ($m === null) $row['errors'][] = 'חודש לא מוכר: ' . $g('month'); else $row['month'] = $m; }
+    if ($g('date') !== '') { $d = date_in($g('date')); if ($d === null) $row['errors'][] = 'תאריך לא תקין: ' . $g('date'); else $row['date'] = $d; }
+    elseif ($row['month']) { $y = $row['month'] <= 4 ? 2026 : 2027; $mm = [1 => 9, 2 => 10, 3 => 11, 4 => 12, 5 => 1, 6 => 2, 7 => 3, 8 => 4, 9 => 5, 10 => 6, 11 => 7, 12 => 8][$row['month']]; $row['date'] = sprintf('%04d-%02d-01', $y, $mm); $row['note'] = trim($row['note'] . ' (תאריך משוער)'); }
+    else $row['errors'][] = 'חסרים חודש או תאריך';
+    $mt = $g('method'); if ($mt !== '') { $k = isset(PAY_METHODS[$mt]) ? $mt : ($methods[$mt] ?? (COLIMP_METHODS[str_replace(['״', '"', '׳', "'"], '', $mt)] ?? null)); if ($k === null) $row['errors'][] = 'אמצעי לא מוכר: ' . $mt; else $row['method'] = $k; }
+    if (preg_match('/\d{12,}/', preg_replace('/[\s\-]/', '', $row['ref'] . $row['note']))) $row['errors'][] = 'נראה כמו מספר כרטיס אשראי';
+    $out['rows'][] = $row;
+    if (count($out['rows']) > 3000) return array_merge($out, ['fatal' => 'יותר מדי שורות.']);
+  }
+  return $out;
+}

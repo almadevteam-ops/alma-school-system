@@ -89,7 +89,7 @@ page_head('גבייה');
   <label>צורת תשלום<select name="m"><option value="">הכל</option><?php foreach (PAY_METHODS as $k => $v) echo '<option value="' . $k . '"' . ($mm === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
   <button>סינון</button>
   <a class="btn sec" href="collection.php?<?= e(http_build_query(['q' => $q, 'f' => $f, 'm' => $mm, 'export' => 1])) ?>">ייצוא לאקסל (CSV)</a>
-  <?php if ($u['role'] === 'admin') echo '<a class="btn sec" href="collection_import.php">ייבוא תיקי גבייה</a>'; ?>
+  <?php if ($u['role'] === 'admin') echo '<a class="btn sec" href="collection_import.php">ייבוא תיקי גבייה</a><a class="btn sec" href="payments_import.php">ייבוא תשלומים</a>'; ?>
 </form>
 <div class="card sc"><table>
 <tr><th>משפחה</th><th>תלמידות</th><th>תעריף</th><th>חיובים</th><th>שולם</th><th>יתרה</th><th>חודשים</th><th>אמצעי</th><th>יום</th></tr>
