@@ -156,7 +156,7 @@ function month_in(string $s): ?int {
   foreach (SCHOOL_MONTHS as $k => $v) if ($s === $v) return $k;
   return null;
 }
-const PAYIMP_HEADERS = ['student' => ['תלמידה', 'שם', 'תלמידות'], 'month' => ['חודש'], 'amount' => ['סכום'], 'date' => ['תאריך', 'תאריך תשלום'], 'method' => ['אמצעי', 'אמצעי תשלום', 'צורת תשלום'], 'ref' => ['אסמכתא'], 'note' => ['הערה', 'הערות']];
+const PAYIMP_HEADERS = ['student' => ['תלמידה', 'שם', 'תלמידות'], 'month' => ['חודש'], 'amount' => ['סכום'], 'date' => ['תאריך', 'תאריך תשלום'], 'method' => ['אמצעי', 'אמצעי תשלום', 'צורת תשלום'], 'ref' => ['אסמכתא'], 'note' => ['הערה', 'הערות'], 'for' => ['עבור']];
 function payimp_parse(string $raw): array {
   $out = ['fatal' => null, 'rows' => []];
   $raw = import_decode($raw);
@@ -175,7 +175,7 @@ function payimp_parse(string $raw): array {
   while (($r = fgetcsv($fh, 0, $delim, '"', '')) !== false) {
     $line++; if (count($r) === 1 && trim((string)$r[0]) === '') continue;
     $g = fn($k) => isset($map[$k]) ? trim((string)($r[$map[$k]] ?? '')) : '';
-    $row = ['line' => $line, 'errors' => [], 'family_id' => null, 'student' => $g('student'), 'month' => null, 'amount' => 0.0, 'date' => null, 'method' => 'other', 'ref' => mb_substr($g('ref'), 0, 60), 'note' => mb_substr($g('note'), 0, 255)];
+    $row = ['line' => $line, 'errors' => [], 'family_id' => null, 'student' => $g('student'), 'month' => null, 'amount' => 0.0, 'date' => null, 'method' => 'other', 'charge_id' => null, 'for' => $g('for'), 'ref' => mb_substr($g('ref'), 0, 60), 'note' => mb_substr($g('note'), 0, 255)];
     $n = $row['student']; $hint = '';
     if (preg_match('/^(.*?)\s*[\[(]([^\])]{1,10})[\])]\s*$/u', $n, $hm)) { $n = trim($hm[1]); $hint = trim($hm[2]); }
     $c = $nm[norm_name($n)] ?? [];
@@ -183,6 +183,12 @@ function payimp_parse(string $raw): array {
     if (count($c) !== 1) $row['errors'][] = count($c) ? 'כמה תלמידות בשם: ' . $n : 'לא נמצאה תלמידה: ' . $n;
     elseif (!$c[0]['family_id']) $row['errors'][] = 'אין תיק גבייה ל' . $n;
     else $row['family_id'] = (int)$c[0]['family_id'];
+    if ($row['for'] !== '' && $row['family_id']) {
+      $cq = db()->prepare('SELECT id FROM charges WHERE family_id = ? AND voided_at IS NULL AND label LIKE ? ORDER BY id LIMIT 1');
+      $cq->execute([$row['family_id'], str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $row['for']) . '%']);
+      $cid = $cq->fetchColumn();
+      if ($cid) $row['charge_id'] = (int)$cid; else $row['errors'][] = 'אין חיוב "' . $row['for'] . '" בתיק (להוסיף קודם חיוב לכולן)';
+    }
     $a = money_in($g('amount')); if ($a === null || $a <= 0) $row['errors'][] = 'סכום לא תקין: ' . $g('amount'); else $row['amount'] = $a;
     if ($g('month') !== '') { $m = month_in($g('month')); if ($m === null) $row['errors'][] = 'חודש לא מוכר: ' . $g('month'); else $row['month'] = $m; }
     if ($g('date') !== '') { $d = date_in($g('date')); if ($d === null) $row['errors'][] = 'תאריך לא תקין: ' . $g('date'); else $row['date'] = $d; }
