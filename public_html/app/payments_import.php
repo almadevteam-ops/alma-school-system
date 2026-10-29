@@ -9,9 +9,14 @@ if (isset($_GET['template'])) {
 $err = ''; $msg = ''; $prev = null; $token = '';
 function pstaged(string $t): ?string { return preg_match('/^[a-f0-9]{32}$/', $t) ? PRIV . '/storage/pay_' . $t . '.bin' : null; }
 foreach (glob(PRIV . '/storage/pay_*.bin') ?: [] as $f) if (filemtime($f) < time() - 3600) @unlink($f);
-function payimp_dup(PDO $pdo, array $r): bool {
-  $st = $pdo->prepare('SELECT 1 FROM payments WHERE family_id = ? AND amount = ? AND paid_on = ? AND method = ? AND IFNULL(for_month,0) = ? AND charge_id IS NULL AND voided_at IS NULL LIMIT 1');
-  $st->execute([$r['family_id'], $r['amount'], $r['date'], $r['method'], (int)($r['month'] ?? 0)]); return (bool)$st->fetchColumn();
+function payimp_key(array $r): string { return implode('|', [$r['family_id'], number_format((float)$r['amount'], 2, '.', ''), $r['date'], $r['method'], (int)($r['month'] ?? 0)]); }
+/** כמה תשלומים זהים כבר קיימים במערכת (לא מבוטלים) לכל מפתח, כדי לא להכפיל בייבוא חוזר. שורות זהות בתוך הקובץ עצמו (למשל 250 + 250) נספרות בנפרד. */
+function payimp_existing(PDO $pdo, array $rows): array {
+  $st = $pdo->prepare('SELECT COUNT(*) FROM payments WHERE family_id = ? AND amount = ? AND paid_on = ? AND method = ? AND IFNULL(for_month,0) = ? AND charge_id IS NULL AND voided_at IS NULL');
+  $have = [];
+  foreach ($rows as $r) { if ($r['errors']) continue; $k = payimp_key($r); if (isset($have[$k])) continue;
+    $st->execute([$r['family_id'], $r['amount'], $r['date'], $r['method'], (int)($r['month'] ?? 0)]); $have[$k] = (int)$st->fetchColumn(); }
+  return $have;
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
@@ -35,10 +40,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       else {
         $res = payimp_parse($raw); $n = 0; $skip = 0; $dup = 0; $pdo = db(); $batch = bin2hex(random_bytes(8)); $pdo->beginTransaction();
         try {
+          $have = payimp_existing($pdo, $res['rows']);
           $ins = $pdo->prepare('INSERT INTO payments (family_id, for_month, amount, paid_on, method, ref, note, batch, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)');
           foreach ($res['rows'] as $r) {
             if ($r['errors']) { $skip++; continue; }
-            if (payimp_dup($pdo, $r)) { $dup++; continue; }
+            $k = payimp_key($r); if (($have[$k] ?? 0) > 0) { $have[$k]--; $dup++; continue; }
             $ins->execute([$r['family_id'], $r['month'], $r['amount'], $r['date'], $r['method'], $r['ref'], $r['note'], 'imp' . substr($batch, 0, 13), $u['id'], now()]); $n++;
           }
           $pdo->commit();
