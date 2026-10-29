@@ -34,6 +34,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'bulk_cha
     } catch (Throwable $t) { $pdo->rollBack(); throw $t; }
   }
 }
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'create_all') {
+  csrf_check();
+  if (empty($_POST['ok'])) $err = 'נא לאשר פתיחת תיקים לכל התלמידות.';
+  else {
+    $pdo = db(); $pdo->beginTransaction();
+    try {
+      $rows = $pdo->query("SELECT id, name FROM students WHERE family_id IS NULL AND status = 'active' ORDER BY name")->fetchAll();
+      $fi = $pdo->prepare('INSERT INTO families (name, created_at, updated_at) VALUES (?,?,?)'); $su = $pdo->prepare('UPDATE students SET family_id = ? WHERE id = ? AND family_id IS NULL');
+      foreach ($rows as $r) { $fi->execute([mb_substr($r['name'], 0, 120), now(), now()]); $su->execute([(int)$pdo->lastInsertId(), $r['id']]); }
+      $pdo->commit();
+    } catch (Throwable $t) { $pdo->rollBack(); throw $t; }
+    audit('family_create_all', 'family', '', count($rows) . ' תיקים');
+    $msg = 'נפתחו ' . count($rows) . ' תיקי גבייה (תעריף 0, אפשר להשלים בתוך כל תיק).';
+  }
+}
 $q = trim((string)($_GET['q'] ?? '')); $f = (string)($_GET['f'] ?? 'all'); $mm = (string)($_GET['m'] ?? '');
 $w = []; $a = [];
 if ($q !== '') { $w[] = '(f.name LIKE ? OR EXISTS (SELECT 1 FROM students s2 WHERE s2.family_id = f.id AND s2.name LIKE ?))'; $l = '%' . $q . '%'; array_push($a, $l, $l); }
@@ -114,5 +129,11 @@ page_head('גבייה');
     <tr><td><?= e($s['name']) ?></td><td><?= e($s['grade']) ?></td><td><form method="post" action="family.php" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="create"><input type="hidden" name="student_id" value="<?= (int)$s['id'] ?>"><button class="sec">פתיחת תיק</button></form></td></tr>
   <?php endforeach; ?></table></div>
   <?php else: ?><p><a class="btn sec" href="collection.php?nofile=1">הצגה</a></p><?php endif; ?>
+  <?php if ($nofile): ?>
+  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="create_all">
+    <label class="chk"><input type="checkbox" name="ok" value="1"> לפתוח תיק נפרד (בתעריף 0) לכל אחת מ-<?= count($nofile) ?> התלמידות הפעילות שאין להן תיק</label>
+    <button>פתיחת תיקים לכולן</button></form>
+  <p class="mu">אחיות אפשר לאחד אחר כך: בתיק של אחת מהן, "צירוף תלמידה לתיק".</p>
+  <?php endif; ?>
 </div>
 <?php page_foot();
