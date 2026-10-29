@@ -30,6 +30,7 @@ require_once __DIR__ . '/totp.php';
 require_once __DIR__ . '/migrate.php';
 require_once __DIR__ . '/files.php';
 require_once __DIR__ . '/import.php';
+require_once __DIR__ . '/collection.php';
 
 // ---- HTTPS ----
 if (cfg('force_https', true) && !is_https()) {
@@ -168,7 +169,7 @@ function page_head(string $title, bool $nav = true): void {
   echo '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
      . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="stylesheet" href="/app/assets/style.css"></head><body>';
   if ($nav && ($u = user())) {
-    echo '<header class="top"><b>עלמא – ניהול תלמידות</b><nav><a href="students.php">תלמידות</a><a href="security.php">אבטחה</a>';
+    echo '<header class="top"><b>עלמא – ניהול תלמידות</b><nav><a href="students.php">תלמידות</a><a href="collection.php">גבייה</a><a href="security.php">אבטחה</a>';
     if ($u['role'] === 'admin') echo '<a href="import.php">ייבוא</a><a href="users.php">משתמשים</a><a href="audit.php">יומן פעולות</a><a href="health.php">בדיקת מערכת</a>';
     echo '</nav><form method="post" action="logout.php" class="inl">' . csrf_field() . '<span class="mu">' . e($u['name']) . '</span> <button class="lnk">יציאה</button></form></header>';
   }
