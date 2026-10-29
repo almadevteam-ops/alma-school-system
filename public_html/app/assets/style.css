@@ -34,3 +34,5 @@ button.lnk{background:none;color:#fff;padding:0;text-decoration:underline}
 .mcs{white-space:nowrap}
 tr.void td{color:var(--mu);text-decoration:line-through}tr.void td:last-child{text-decoration:none}
 .w100{width:100%}.chk{flex-direction:row!important;align-items:center;gap:6px}.actions{margin:12px 0}
+
+.sm{padding:3px 10px;font-size:13px}

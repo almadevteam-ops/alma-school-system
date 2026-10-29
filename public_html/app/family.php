@@ -31,7 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($act === 'save') {
     $monthly = money_in((string)($_POST['monthly'] ?? '0')); $months = (int)($_POST['months'] ?? 10);
     $day = trim((string)($_POST['collect_day'] ?? '')); $method = (string)($_POST['method'] ?? '');
-    $payer = (int)($_POST['payer_id'] ?? 0);
+    $pk = (string)($_POST['payer'] ?? 'parents'); $payer = 0; $kind = 'parents';
+    if (preg_match('/^p:(\d+)$/', $pk, $pm)) { $payer = (int)$pm[1]; $kind = 'org'; } elseif (isset(PAYER_KINDS[$pk])) $kind = $pk;
     $name = mb_substr(trim((string)($_POST['name'] ?? '')), 0, 120);
     if ($name === '') $err = 'נא למלא שם משפחה.';
     elseif ($monthly === null) $err = 'התעריף החודשי לא תקין (מספר חיובי).';
@@ -39,9 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     elseif ($day !== '' && (!ctype_digit($day) || (int)$day < 1 || (int)$day > 31)) $err = 'יום גבייה חייב להיות בין 1 ל-31.';
     elseif ($method !== '' && !isset(PAY_METHODS[$method])) $err = 'צורת תשלום לא תקינה.';
     else {
-      if ($payer) { $c = $pdo->prepare('SELECT 1 FROM payers WHERE id = ?'); $c->execute([$payer]); if (!$c->fetchColumn()) $payer = 0; }
-      $pdo->prepare('UPDATE families SET name=?, monthly=?, months=?, method=?, collect_day=?, payer_id=?, discount_note=?, notes=?, updated_at=? WHERE id=?')
-        ->execute([$name, $monthly, $months, $method, $day === '' ? null : (int)$day, $payer ?: null, mb_substr(trim((string)($_POST['discount_note'] ?? '')), 0, 255), mb_substr(trim((string)($_POST['notes'] ?? '')), 0, 2000), now(), $id]);
+      if ($payer) { $c = $pdo->prepare('SELECT 1 FROM payers WHERE id = ?'); $c->execute([$payer]); if (!$c->fetchColumn()) { $payer = 0; $kind = 'parents'; } }
+      $pdo->prepare('UPDATE families SET name=?, monthly=?, months=?, method=?, collect_day=?, payer_id=?, payer_kind=?, discount_note=?, notes=?, updated_at=? WHERE id=?')
+        ->execute([$name, $monthly, $months, $method, $day === '' ? null : (int)$day, $payer ?: null, $kind, mb_substr(trim((string)($_POST['discount_note'] ?? '')), 0, 255), mb_substr(trim((string)($_POST['notes'] ?? '')), 0, 2000), now(), $id]);
       audit('family_update', 'family', (string)$id, "תעריף $monthly × $months");
       redirect('family.php?id=' . $id . '&m=' . rawurlencode('נשמר.'));
     }
@@ -105,6 +106,7 @@ if (!empty($_GET['m'])) $msg = mb_substr((string)$_GET['m'], 0, 200);
 $sum = collection_data([$id])[$id];
 $studs = family_students($id);
 $payers = db()->query('SELECT id, name FROM payers ORDER BY name')->fetchAll();
+$divorced = (bool)array_filter($studs, fn($x) => ($x['marital'] ?? '') === 'divorced');
 $ch = db()->prepare('SELECT c.*, (SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.charge_id = c.id AND p.voided_at IS NULL) paid FROM charges c WHERE c.family_id = ? ORDER BY c.id'); $ch->execute([$id]); $charges = $ch->fetchAll();
 $py = db()->prepare('SELECT p.*, u.display_name who FROM payments p LEFT JOIN users u ON u.id = p.created_by WHERE p.family_id = ? ORDER BY p.paid_on DESC, p.id DESC'); $py->execute([$id]); $pays = $py->fetchAll();
 $free = db()->query('SELECT id, name, grade FROM students WHERE family_id IS NULL AND status = \'active\' ORDER BY name')->fetchAll();
@@ -144,7 +146,12 @@ page_head($fam['name']);
     <label>מספר חודשים<select name="months"><option value="10"<?= (int)$fam['months'] === 10 ? ' selected' : '' ?>>10 (ספטמבר–יוני)</option><option value="12"<?= (int)$fam['months'] === 12 ? ' selected' : '' ?>>12 (ספטמבר–אוגוסט)</option></select></label>
     <label>צורת תשלום<select name="method"><option value="">לא נקבע</option><?php foreach (PAY_METHODS as $k => $v) echo '<option value="' . $k . '"' . ($fam['method'] === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
     <label>יום גבייה בחודש<input name="collect_day" inputmode="numeric" maxlength="2" value="<?= e((string)($fam['collect_day'] ?? '')) ?>"></label>
-    <label>גורם משלם<select name="payer_id"><option value="">אין (המשפחה משלמת)</option><?php foreach ($payers as $p) echo '<option value="' . (int)$p['id'] . '"' . ((int)$fam['payer_id'] === (int)$p['id'] ? ' selected' : '') . '>' . e($p['name']) . '</option>'; ?></select></label>
+    <label>מי משלם<select name="payer"><?php
+      $cur = $fam['payer_kind'] === 'org' && $fam['payer_id'] ? 'p:' . (int)$fam['payer_id'] : $fam['payer_kind'];
+      if ($divorced) { echo '<option value="parents"' . ($cur === 'parents' ? ' selected' : '') . '>לא נבחר (הורים גרושים)</option>';
+        foreach (['father', 'mother'] as $k) echo '<option value="' . $k . '"' . ($cur === $k ? ' selected' : '') . '>' . e(PAYER_KINDS[$k]) . '</option>'; }
+      else echo '<option value="parents"' . ($cur === 'parents' || $cur === 'father' || $cur === 'mother' ? ' selected' : '') . '>הורים</option>';
+      foreach ($payers as $p) echo '<option value="p:' . (int)$p['id'] . '"' . ($cur === 'p:' . (int)$p['id'] ? ' selected' : '') . '>' . e($p['name']) . '</option>'; ?></select></label>
     <label>הנחה / סיבה<input name="discount_note" maxlength="255" value="<?= e($fam['discount_note']) ?>" placeholder="למשל: הנחת אחיות"></label>
   </div>
   <p><label class="mu">הערות<br><textarea name="notes" rows="3" class="w100"><?= e($fam['notes'] ?? '') ?></textarea></label></p>

@@ -33,13 +33,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = colimp_parse($raw); $n = 0; $skip = 0; $pdo = db(); $pdo->beginTransaction();
         try {
           $pf = $pdo->prepare('SELECT id FROM payers WHERE name = ?'); $pi = $pdo->prepare('INSERT INTO payers (name, notes, created_at) VALUES (?,?,?)');
-          $fi = $pdo->prepare('INSERT INTO families (name, monthly, months, method, collect_day, payer_id, discount_note, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)');
+          $fi = $pdo->prepare('INSERT INTO families (name, monthly, months, method, collect_day, payer_id, payer_kind, discount_note, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
           $su = $pdo->prepare('UPDATE students SET family_id = ? WHERE id = ? AND family_id IS NULL');
           foreach ($res['rows'] as $r) {
             if ($r['errors']) { $skip++; continue; }
             $pid = null;
             if ($r['payer'] !== '') { $pf->execute([$r['payer']]); $pid = $pf->fetchColumn() ?: null; if (!$pid) { $pi->execute([mb_substr($r['payer'], 0, 100), '', now()]); $pid = (int)$pdo->lastInsertId(); } }
-            $fi->execute([mb_substr($r['name'], 0, 120), $r['monthly'], $r['months'], $r['method'], $r['day'], $pid, $r['discount'], $r['notes'] === '' ? null : $r['notes'], now(), now()]);
+            $fi->execute([mb_substr($r['name'], 0, 120), $r['monthly'], $r['months'], $r['method'], $r['day'], $pid, $pid ? 'org' : 'parents', $r['discount'], $r['notes'] === '' ? null : $r['notes'], now(), now()]);
             $fid = (int)$pdo->lastInsertId();
             foreach ($r['students'] as $sid) $su->execute([$fid, $sid]);
             $n++;

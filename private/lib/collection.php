@@ -5,6 +5,7 @@ const SCHOOL_MONTHS = [1 => 'ספטמבר', 2 => 'אוקטובר', 3 => 'נוב�
 const PAY_METHODS = ['hok_bank' => 'הוראת קבע בנק', 'hok_card' => 'הו״ק אשראי (נדרים פלוס)', 'check' => 'צ׳קים', 'cash' => 'מזומן', 'transfer' => 'העברה', 'payer' => 'גורם משלם (עמותה)', 'other' => 'אחר'];
 const CHARGE_KINDS = ['books' => 'ספרי לימוד', 'tour' => 'סיור', 'activities' => 'חוגים', 'other' => 'אחר'];
 const BOOKS_BY_GRADE = ['ז' => 250, 'ח' => 250, 'ט' => 350, 'י' => 350, 'יא' => 350];
+const PAYER_KINDS = ['parents' => 'הורים', 'father' => 'אבא', 'mother' => 'אמא'];
 const COLLECTION_ROLES = ['admin', 'secretary', 'finance'];
 
 function money($v): string { $v = (float)$v; return number_format($v, fmod($v, 1) == 0.0 ? 0 : 2) . ' ₪'; }
@@ -84,7 +85,7 @@ function family_default_name(array $students): string {
   return $first !== '' ? 'משפחת ' . $first : 'משפחה חדשה';
 }
 function family_students(int $fid): array {
-  $st = db()->prepare('SELECT id, name, grade, cls, f_name, f_phone, m_name, m_phone, status FROM students WHERE family_id = ? ORDER BY FIELD(grade,\'ז\',\'ח\',\'ט\',\'י\',\'יא\',\'יב\'), name');
+  $st = db()->prepare('SELECT id, name, grade, cls, f_name, f_phone, m_name, m_phone, marital, status FROM students WHERE family_id = ? ORDER BY FIELD(grade,\'ז\',\'ח\',\'ט\',\'י\',\'יא\',\'יב\'), name');
   $st->execute([$fid]); return $st->fetchAll();
 }
 
@@ -141,4 +142,10 @@ function colimp_parse(string $raw): array {
     if (count($out['rows']) > 1000) return array_merge($out, ['fatal' => 'יותר מדי שורות.']);
   }
   return $out;
+}
+
+/** תווית "מי משלם": הורים / אבא / אמא / שם הגורם המשלם */
+function payer_label(array $f): string {
+  if (($f['payer_kind'] ?? 'parents') === 'org') return (string)($f['payer'] ?? '');
+  return PAYER_KINDS[$f['payer_kind'] ?? 'parents'] ?? 'הורים';
 }

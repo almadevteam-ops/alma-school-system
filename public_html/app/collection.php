@@ -38,7 +38,7 @@ $q = trim((string)($_GET['q'] ?? '')); $f = (string)($_GET['f'] ?? 'all'); $mm =
 $w = []; $a = [];
 if ($q !== '') { $w[] = '(f.name LIKE ? OR EXISTS (SELECT 1 FROM students s2 WHERE s2.family_id = f.id AND s2.name LIKE ?))'; $l = '%' . $q . '%'; array_push($a, $l, $l); }
 if ($mm !== '' && isset(PAY_METHODS[$mm])) { $w[] = 'f.method = ?'; $a[] = $mm; }
-$sql = 'SELECT f.id, f.name, f.monthly, f.months, f.method, f.collect_day, f.discount_note, p.name payer, '
+$sql = 'SELECT f.id, f.name, f.monthly, f.months, f.method, f.collect_day, f.discount_note, f.payer_kind, p.name payer, '
      . "(SELECT GROUP_CONCAT(CONCAT(s.name, ' (', s.grade, ')') ORDER BY s.name SEPARATOR ', ') FROM students s WHERE s.family_id = f.id) names "
      . 'FROM families f LEFT JOIN payers p ON p.id = f.payer_id ' . ($w ? 'WHERE ' . implode(' AND ', $w) : '') . ' ORDER BY f.name';
 $st = db()->prepare($sql); $st->execute($a); $fams = $st->fetchAll();
@@ -53,7 +53,7 @@ if (isset($_GET['export'])) {
   $o = fopen('php://output', 'w'); fwrite($o, "\xEF\xBB\xBF");
   fputcsv($o, ['משפחה', 'תלמידות', 'תעריף חודשי', 'חודשים', 'שכר לימוד', 'חיובים נוספים', 'שולם', 'יתרה', 'צורת תשלום', 'יום גבייה', 'גורם משלם', 'הנחה'], ',', '"', '');
   foreach ($fams as $r) { $d = $data[(int)$r['id']];
-    fputcsv($o, [csv_safe($r['name']), csv_safe((string)$r['names']), $r['monthly'], $r['months'], $d['tuition'], $d['charges'], $d['paid'], $d['balance'], method_label($r['method']), $r['collect_day'], csv_safe((string)$r['payer']), csv_safe($r['discount_note'])], ',', '"', ''); }
+    fputcsv($o, [csv_safe($r['name']), csv_safe((string)$r['names']), $r['monthly'], $r['months'], $d['tuition'], $d['charges'], $d['paid'], $d['balance'], method_label($r['method']), $r['collect_day'], csv_safe(payer_label($r)), csv_safe($r['discount_note'])], ',', '"', ''); }
   exit;
 }
 $payers = db()->query('SELECT p.id, p.name, (SELECT COUNT(*) FROM families WHERE payer_id = p.id) n FROM payers p ORDER BY p.name')->fetchAll();
@@ -80,7 +80,7 @@ page_head('גבייה');
 <tr><th>משפחה</th><th>תלמידות</th><th>תעריף</th><th>חיובים</th><th>שולם</th><th>יתרה</th><th>חודשים</th><th>אמצעי</th><th>יום</th></tr>
 <?php foreach ($fams as $r): $d = $data[(int)$r['id']]; ?>
 <tr>
-  <td><a href="family.php?id=<?= (int)$r['id'] ?>"><?= e($r['name']) ?></a><?= $r['payer'] ? ' <span class="pill">' . e($r['payer']) . '</span>' : '' ?></td>
+  <td><a href="family.php?id=<?= (int)$r['id'] ?>"><?= e($r['name']) ?></a><?php $pl = payer_label($r); if ($r['payer_kind'] !== 'parents') echo ' <span class="pill">' . e($pl) . '</span>'; ?></td>
   <td class="mu"><?= e((string)$r['names']) ?></td>
   <td><?= e(money($r['monthly'])) ?> × <?= (int)$r['months'] ?></td>
   <td><?= e(money($d['charges'])) ?></td><td><?= e(money($d['paid'])) ?></td>

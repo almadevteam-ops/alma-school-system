@@ -101,8 +101,8 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
 <div class="card">
   <h2>גבייה</h2>
   <?php if ($fid): ?><a class="btn sec" href="family.php?id=<?= (int)$fid ?>">פתיחת תיק הגבייה</a>
-  <?php elseif (can_edit()): ?><form method="post" action="family.php" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="create"><input type="hidden" name="student_id" value="<?= (int)$id ?>"><button class="sec">פתיחת תיק גבייה</button></form>
-  <?php else: ?><span class="mu">אין תיק גבייה.</span><?php endif; ?>
+  <?php else: ?><form method="post" action="family.php" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="create"><input type="hidden" name="student_id" value="<?= (int)$id ?>"><button class="sec">פתיחת תיק גבייה</button></form>
+  <?php endif; ?>
 </div>
 <?php endif; ?>
 <?php if ($id && can_see_ids()): ?>

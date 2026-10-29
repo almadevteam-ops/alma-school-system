@@ -14,7 +14,7 @@ if ($c !== '') { $w[] = 'city LIKE ?'; $a[] = '%' . $c . '%'; }
 if (isset(STATUS[$s])) { $w[] = 'status = ?'; $a[] = $s; }
 $where = $w ? 'WHERE ' . implode(' AND ', $w) : '';
 $st = db()->prepare("SELECT COUNT(*) FROM students $where"); $st->execute($a); $total = (int)$st->fetchColumn();
-$st = db()->prepare("SELECT id, name, grade, cls, idn, city, phone, status FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
+$st = db()->prepare("SELECT id, name, grade, cls, idn, city, phone, status, family_id FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
 $st->execute($a); $rows = $st->fetchAll();
 function mask(string $v): string { return $v === '' ? '' : str_repeat('•', max(0, mb_strlen($v) - 3)) . mb_substr($v, -3); }
 page_head('תלמידות');
@@ -29,7 +29,7 @@ page_head('תלמידות');
   <?php if (can_edit()) echo '<a class="btn sec" href="student.php">+ תלמידה חדשה</a>'; ?>
 </form>
 <div class="card sc"><table>
-<tr><th>#</th><th>שם</th><th>כיתה</th><th>ת״ז</th><th>עיר</th><th>טלפון</th><th>סטטוס</th></tr>
+<tr><th>#</th><th>שם</th><th>כיתה</th><th>ת״ז</th><th>עיר</th><th>טלפון</th><th>סטטוס</th><?php if (in_array($u['role'], COLLECTION_ROLES, true)) echo '<th>גבייה</th>'; ?></tr>
 <?php foreach ($rows as $i => $r): ?>
 <tr>
   <td><?= ($pg - 1) * $per + $i + 1 ?></td>
@@ -39,8 +39,9 @@ page_head('תלמידות');
   <td><?= e($r['city']) ?></td>
   <td><?= e($r['phone']) ?></td>
   <td><span class="pill <?= e($r['status']) ?>"><?= e(STATUS[$r['status']] ?? $r['status']) ?></span></td>
+  <?php if (in_array($u['role'], COLLECTION_ROLES, true)): ?><td><?php if ($r['family_id']): ?><a class="btn sec sm" href="family.php?id=<?= (int)$r['family_id'] ?>">לגבייה</a><?php else: ?><form method="post" action="family.php" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="create"><input type="hidden" name="student_id" value="<?= (int)$r['id'] ?>"><button class="sec sm">פתיחת תיק</button></form><?php endif; ?></td><?php endif; ?>
 </tr>
-<?php endforeach; if (!$rows) echo '<tr><td colspan="7" class="mu">אין תוצאות.</td></tr>'; ?>
+<?php endforeach; if (!$rows) echo '<tr><td colspan="8" class="mu">אין תוצאות.</td></tr>'; ?>
 </table></div>
 <?php
 $pages = (int)ceil($total / $per);
