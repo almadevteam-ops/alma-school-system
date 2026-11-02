@@ -124,7 +124,7 @@ page_head($fam['name']);
     <div><span class="mu">שולם</span><b class="ok"><?= e(money($sum['paid'])) ?></b></div>
     <div><span class="mu">יתרה</span><b class="<?= $sum['balance'] > 0 ? 'er' : 'ok' ?>"><?= e(money($sum['balance'])) ?></b></div>
   </div>
-  <div class="mcs"><?= month_cells($sum) ?> <span class="mu">✓ שולם · ½ חלקי · · לא שולם</span></div>
+  <div class="mbs"><?= month_cells($sum, true) ?></div>
 </div>
 <?php notes_card(array_map(fn($x) => ['id' => $x['id'], 'name' => $x['name']], $studs), 'family.php?id=' . $id); ?>
 <?php sec_open('pay', 'רישום תשלום והיסטוריה', count($pays) . ' תשלומים · שולם ' . money($sum['paid']), '₪'); ?>

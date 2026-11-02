@@ -67,11 +67,17 @@ function collection_data(?array $ids = null): array {
   unset($o);
   return $out;
 }
-function month_cells(array $s): string {
+function month_cells(array $s, bool $big = false): string {
   $h = '';
   foreach ($s['status'] as $m => $x) {
+    $amt = (float)$s['cov'][$m];
+    if ($big) {
+      $t = $x === 'na' ? '–' : number_format($amt, fmod($amt, 1) == 0.0 ? 0 : 2);
+      $h .= '<div class="mb ' . $x . '" title="' . e(SCHOOL_MONTHS[$m] . ': ' . money($amt)) . '"><small>' . e(SCHOOL_MONTHS[$m]) . '</small><b>' . e($t) . '</b></div>';
+      continue;
+    }
     $sym = ['paid' => '✓', 'part' => '½', 'none' => '·', 'na' => '–'][$x];
-    $h .= '<span class="mc ' . $x . '" title="' . e(SCHOOL_MONTHS[$m] . ': ' . money($s['cov'][$m])) . '">' . $sym . '</span>';
+    $h .= '<span class="mc ' . $x . '" title="' . e(SCHOOL_MONTHS[$m] . ': ' . money($amt)) . '">' . $sym . '</span>';
   }
   return $h;
 }
