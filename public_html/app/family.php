@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     else {
       if ($payer) { $c = $pdo->prepare('SELECT 1 FROM payers WHERE id = ?'); $c->execute([$payer]); if (!$c->fetchColumn()) { $payer = 0; $kind = 'parents'; } }
       $pdo->prepare('UPDATE families SET name=?, monthly=?, months=?, method=?, collect_day=?, payer_id=?, payer_kind=?, discount_note=?, notes=?, updated_at=? WHERE id=?')
-        ->execute([$name, $monthly, $months, $method, $day === '' ? null : (int)$day, $payer ?: null, $kind, mb_substr(trim((string)($_POST['discount_note'] ?? '')), 0, 255), mb_substr(trim((string)($_POST['notes'] ?? '')), 0, 2000), now(), $id]);
+        ->execute([$name, $monthly, $months, $method, $day === '' ? null : (int)$day, $payer ?: null, $kind, mb_substr(trim((string)($_POST['discount_note'] ?? '')), 0, 255), $fam['notes'], now(), $id]);
       audit('family_update', 'family', (string)$id, "תעריף $monthly × $months");
       redirect('family.php?id=' . $id . '&m=' . rawurlencode('נשמר.'));
     }
@@ -103,6 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $fam = array_merge($fam, array_intersect_key($_POST, $fam));
 }
 if (!empty($_GET['m'])) $msg = mb_substr((string)$_GET['m'], 0, 200);
+if (!empty($_GET['e'])) $err = mb_substr((string)$_GET['e'], 0, 500);
 $sum = collection_data([$id])[$id];
 $studs = family_students($id);
 $payers = db()->query('SELECT id, name FROM payers ORDER BY name')->fetchAll();
@@ -154,9 +155,9 @@ page_head($fam['name']);
       foreach ($payers as $p) echo '<option value="p:' . (int)$p['id'] . '"' . ($cur === 'p:' . (int)$p['id'] ? ' selected' : '') . '>' . e($p['name']) . '</option>'; ?></select></label>
     <label>הנחה / סיבה<input name="discount_note" maxlength="255" value="<?= e($fam['discount_note']) ?>" placeholder="למשל: הנחת אחיות"></label>
   </div>
-  <p><label class="mu">הערות<br><textarea name="notes" rows="3" class="w100"><?= e($fam['notes'] ?? '') ?></textarea></label></p>
   <button>שמירה</button> <a class="btn sec" href="collection.php">חזרה לגבייה</a>
 </form>
+<?php notes_card(array_map(fn($x) => ['id' => $x['id'], 'name' => $x['name']], $studs), 'family.php?id=' . $id); ?>
 <div class="card">
   <h2>רישום תשלום</h2>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="add_payment">

@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_role(['admin']);
     if (!$row || empty($_POST['ok'])) fail_page(400, 'נדרש אישור מחיקה.');
     $fs = db()->prepare('SELECT stored FROM student_files WHERE student_id = ?'); $fs->execute([$id]);
-    $storedList = array_column($fs->fetchAll(), 'stored');
+    $storedList = array_merge(array_column($fs->fetchAll(), 'stored'), note_stored_for_student($id));
     db()->prepare('DELETE FROM students WHERE id = ?')->execute([$id]);
     foreach ($storedList as $sn) remove_stored_file($sn);
     audit('delete', 'student', (string)$id, $row['name']);
@@ -41,7 +41,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   foreach ($F as $k => [$lbl, $max]) $d[$k] = mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max);
   $d['status'] = isset(STATUS[$_POST['status'] ?? '']) ? $_POST['status'] : 'active';
   $d['marital'] = ($_POST['marital'] ?? '') === 'divorced' ? 'divorced' : 'married';
-  $d['notes'] = mb_substr(trim((string)($_POST['notes'] ?? '')), 0, 2000);
   if ($d['name'] === '') $err = 'נא למלא שם.';
   elseif (!in_array($d['grade'], GRADES, true)) $err = 'נא לבחור כיתה.';
   elseif ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $err = 'כתובת האימייל לא תקינה.';
@@ -91,7 +90,6 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <label>מצב הורים<select name="marital"<?= $ro ? ' disabled' : '' ?>><option value="married">נשואים</option><option value="divorced"<?= $val('marital') === 'divorced' ? ' selected' : '' ?>>גרושים</option></select></label>
   <label>סטטוס<select name="status"<?= $ro ? ' disabled' : '' ?>><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . (($val('status') ?: 'active') === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
   </div>
-  <p><label class="mu">הערות<br><textarea name="notes" rows="3" style="width:100%"<?= $ro ? ' readonly' : '' ?>><?= e($val('notes')) ?></textarea></label></p>
   <?php if (!$ro): ?><button>שמירה</button><?php endif; ?>
   <a class="btn sec" href="students.php">חזרה</a>
   <?php if ($id && !valid_il_id((string)$val('idn')) && $val('idn') !== '' && can_see_ids()) echo '<p class="mu">שימו לב: מספר הזהות שהוזן לא עובר בדיקת תקינות.</p>'; ?>
@@ -105,6 +103,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <?php endif; ?>
 </div>
 <?php endif; ?>
+<?php if ($id && in_array($u['role'], COLLECTION_ROLES, true)) notes_card([['id' => $id, 'name' => $row['name']]], 'student.php?id=' . $id); ?>
 <?php if ($id && can_see_ids()): ?>
 <div class="card">
   <h2>מסמכים</h2>

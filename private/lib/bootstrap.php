@@ -31,6 +31,7 @@ require_once __DIR__ . '/migrate.php';
 require_once __DIR__ . '/files.php';
 require_once __DIR__ . '/import.php';
 require_once __DIR__ . '/collection.php';
+require_once __DIR__ . '/notes.php';
 
 // ---- HTTPS ----
 if (cfg('force_https', true) && !is_https()) {

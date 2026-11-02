@@ -36,3 +36,6 @@ tr.void td{color:var(--mu);text-decoration:line-through}tr.void td:last-child{te
 .w100{width:100%}.chk{flex-direction:row!important;align-items:center;gap:6px}.actions{margin:12px 0}
 
 .sm{padding:3px 10px;font-size:13px}
+
+.notef{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}.notef label{display:flex;flex-direction:column;gap:4px}
+.note{border-top:1px solid var(--ln);padding:10px 0}.note .nb{margin:4px 0 6px;line-height:1.5}.note.old .nb{color:var(--mu)}
