@@ -1,6 +1,13 @@
 <?php
 require __DIR__ . '/../../private/lib/bootstrap.php';
-require_role(['admin']);
+$me = require_role(['admin']);
+$mailMsg = ''; $mailOk = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'testmail') {
+  csrf_check();
+  $to = trim((string)($_POST['to'] ?? ''));
+  if (!filter_var($to, FILTER_VALIDATE_EMAIL)) { $mailOk = false; $mailMsg = 'כתובת לא תקינה.'; }
+  else { $mailOk = send_mail($to, 'בדיקת מייל ממערכת עלמא', "זהו מייל בדיקה ממערכת עלמא.\nאם הגעת לכאן, שליחת הקודים תעבוד.\nנשלח מ: " . (string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'))); audit('mail_test', 'system', '', mfa_mask($to)); $mailMsg = $mailOk ? 'המייל נמסר לשרת הדואר. בדקי את התיבה וגם את הספאם (יכול לקחת דקה).' : 'השרת סירב לשלוח. ייתכן שהשליחה חסומה באחסון.'; }
+}
 $checks = [];
 $checks['גרסת PHP'] = [PHP_VERSION, version_compare(PHP_VERSION, '8.1.0', '>=')];
 foreach (['pdo_mysql', 'mbstring', 'openssl', 'fileinfo'] as $x) $checks['תוסף ' . $x] = [extension_loaded($x) ? 'קיים' : 'חסר', extension_loaded($x)];
@@ -21,4 +28,10 @@ page_head('בדיקת מערכת');
 <div class="card"><table>
 <?php foreach ($checks as $k => [$v, $ok]) echo '<tr><td>' . e($k) . '</td><td>' . e($v) . '</td><td class="' . ($ok ? 'ok' : 'er') . '">' . ($ok ? '✓ תקין' : '✗ לטיפול') . '</td></tr>'; ?>
 </table></div>
+<div class="card">
+  <h2>בדיקת שליחת מייל (לקודי כניסה)</h2>
+  <p class="mu">שולח מייל בדיקה מהכתובת <span dir="ltr"><?= e((string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'))) ?></span>.</p>
+  <?php if ($mailMsg) echo '<p class="' . ($mailOk ? 'ok' : 'er') . '">' . e($mailMsg) . '</p>'; ?>
+  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="testmail"><label>כתובת לבדיקה<input type="email" name="to" dir="ltr" required placeholder="name@gmail.com"></label><button>שליחת מייל בדיקה</button></form>
+</div>
 <?php page_foot();
