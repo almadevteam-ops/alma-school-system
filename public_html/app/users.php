@@ -11,10 +11,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!preg_match('/^[A-Za-z0-9._@-]{3,60}$/', $un)) $err = 'שם משתמש: 3–60 תווים באנגלית, ספרות או . _ @ -';
     elseif ($nm === '') $err = 'נא למלא שם תצוגה.';
     elseif ($e = pw_ok($pw)) $err = $e;
+    elseif (($_POST['method'] ?? '') === 'email' && !filter_var(trim((string)($_POST['mail'] ?? '')), FILTER_VALIDATE_EMAIL)) $err = 'לאימות במייל נדרשת כתובת מייל תקינה.';
     else {
+      $byMail = ($_POST['method'] ?? '') === 'email'; $mail = $byMail ? mb_substr(trim((string)$_POST['mail']), 0, 150) : '';
       try {
-        db()->prepare('INSERT INTO users (username, display_name, pass_hash, role, created_at) VALUES (?,?,?,?,?)')->execute([$un, $nm, hash_pw($pw), $role, now()]);
-        audit('user_create', 'user', $un, 'תפקיד: ' . $role); $msg = 'המשתמשת נוצרה.';
+        db()->prepare('INSERT INTO users (username, display_name, pass_hash, role, created_at, mfa_method, mfa_email, totp_enabled) VALUES (?,?,?,?,?,?,?,?)')->execute([$un, $nm, hash_pw($pw), $role, now(), $byMail ? 'email' : 'app', $mail, $byMail ? 1 : 0]);
+        audit('user_create', 'user', $un, 'תפקיד: ' . $role . ', אימות: ' . ($byMail ? 'מייל' : 'אפליקציה')); $msg = 'המשתמשת נוצרה.' . ($byMail ? ' בכניסה היא תקבל קוד במייל.' : ' בכניסה הראשונה היא תגדיר אפליקציית אימות.');
       } catch (PDOException $x) { $err = 'שם המשתמש כבר קיים.'; }
     }
   } elseif ($act === 'toggle' || $act === 'reset' || $act === 'role' || $act === 'reset2fa' || $act === 'mfa') {
@@ -83,6 +85,8 @@ page_head('משתמשים');
     <label>שם משתמש (אנגלית)<input name="username" required></label>
     <label>סיסמה (10+ תווים, אותיות וספרות)<input name="pw" type="password" required autocomplete="new-password"></label>
     <label>תפקיד<select name="role"><?php foreach (ROLES as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
+    <label>שיטת אימות בכניסה<select name="method"><option value="app">אפליקציית אימות בטלפון</option><option value="email">קוד שנשלח למייל</option></select></label>
+    <label>כתובת מייל (לאימות במייל)<input type="email" name="mail" dir="ltr" placeholder="name@gmail.com"></label>
   </div>
   <p><button>הוספה</button></p>
 </form>
