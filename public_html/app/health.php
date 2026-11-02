@@ -6,7 +6,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'testmail
   csrf_check();
   $to = trim((string)($_POST['to'] ?? ''));
   if (!filter_var($to, FILTER_VALIDATE_EMAIL)) { $mailOk = false; $mailMsg = 'כתובת לא תקינה.'; }
-  else { $mailOk = send_mail($to, 'בדיקת מייל ממערכת עלמא', "זהו מייל בדיקה ממערכת עלמא.\nאם הגעת לכאן, שליחת הקודים תעבוד.\nנשלח מ: " . (string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'))); audit('mail_test', 'system', '', mfa_mask($to)); $mailMsg = $mailOk ? 'המייל נמסר לשרת הדואר. בדקי את התיבה וגם את הספאם (יכול לקחת דקה).' : 'השרת סירב לשלוח. ייתכן שהשליחה חסומה באחסון.'; }
+  else { $mailOk = send_mail($to, 'בדיקת מייל ממערכת עלמא', "זהו מייל בדיקה ממערכת עלמא.\nאם הגעת לכאן, שליחת הקודים תעבוד.\nנשלח מ: " . (string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'))); audit('mail_test', 'system', '', mfa_mask($to)); $mailMsg = $mailOk ? 'המייל נמסר לשרת הדואר. בדקי את התיבה וגם את הספאם (יכול לקחת דקה).' : 'השליחה נכשלה: ' . mail_last_error(); }
 }
 $checks = [];
 $checks['גרסת PHP'] = [PHP_VERSION, version_compare(PHP_VERSION, '8.1.0', '>=')];
@@ -30,7 +30,7 @@ page_head('בדיקת מערכת');
 </table></div>
 <div class="card">
   <h2>בדיקת שליחת מייל (לקודי כניסה)</h2>
-  <p class="mu">שולח מייל בדיקה מהכתובת <span dir="ltr"><?= e((string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'))) ?></span>.</p>
+  <p class="mu">שולח מייל בדיקה מהכתובת <span dir="ltr"><?= e((string)cfg('mail_from', cfg('smtp_user', 'noreply@' . (string)cfg('host', 'localhost')))) ?></span> <?= cfg('smtp_host') ? '(דרך SMTP: ' . e((string)cfg('smtp_host')) . ')' : '(דרך שרת האחסון)' ?>.</p>
   <?php if ($mailMsg) echo '<p class="' . ($mailOk ? 'ok' : 'er') . '">' . e($mailMsg) . '</p>'; ?>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="testmail"><label>כתובת לבדיקה<input type="email" name="to" dir="ltr" required placeholder="name@gmail.com"></label><button>שליחת מייל בדיקה</button></form>
 </div>

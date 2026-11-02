@@ -10,12 +10,49 @@ function mfa_mask(string $email): string {
   return mb_substr($a, 0, 2) . '***@' . $d;
 }
 function mfa_code_hash(string $code): string { return hash_hmac('sha256', $code, master_key()); }
+$GLOBALS['MAIL_ERR'] = '';
+function mail_last_error(): string { return (string)$GLOBALS['MAIL_ERR']; }
+/** שליחת SMTP פשוטה (Gmail: smtp.gmail.com, סיסמת אפליקציה). smtp_secure: ssl (465) | tls (587) | none. */
+function smtp_send(string $to, string $subject, string $body): bool {
+  $host = (string)cfg('smtp_host'); $secure = (string)cfg('smtp_secure', 'ssl'); $port = (int)cfg('smtp_port', $secure === 'tls' ? 587 : 465);
+  $user = (string)cfg('smtp_user', ''); $pass = (string)cfg('smtp_pass', ''); $from = (string)cfg('mail_from', $user);
+  $fail = function (string $m) use (&$fp): bool { $GLOBALS['MAIL_ERR'] = $m; if (is_resource($fp)) @fclose($fp); return false; };
+  $fp = null; $errno = 0; $errstr = '';
+  $fp = @stream_socket_client(($secure === 'ssl' ? 'ssl://' : 'tcp://') . $host . ':' . $port, $errno, $errstr, 12);
+  if (!$fp) return $fail("חיבור ל-$host:$port נכשל ($errstr)");
+  stream_set_timeout($fp, 12);
+  $rd = function () use (&$fp): array { $all = ''; while (($l = fgets($fp, 1024)) !== false) { $all .= $l; if (strlen($l) < 4 || $l[3] === ' ') break; } return [(int)substr($all, 0, 3), trim($all)]; };
+  $cmd = function (string $c, array $ok) use (&$fp, $rd): array { fwrite($fp, $c . "\r\n"); [$code, $txt] = $rd(); return [in_array($code, $ok, true), $code . ' ' . mb_substr($txt, 0, 120)]; };
+  [$c, ] = $rd(); if ($c !== 220) return $fail('השרת לא ענה כראוי');
+  $ehlo = $cmd('EHLO ' . (string)cfg('host', 'localhost'), [250]); if (!$ehlo[0]) return $fail('EHLO: ' . $ehlo[1]);
+  if ($secure === 'tls') {
+    $r = $cmd('STARTTLS', [220]); if (!$r[0]) return $fail('STARTTLS: ' . $r[1]);
+    if (!@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) return $fail('הצפנת TLS נכשלה');
+    $ehlo = $cmd('EHLO ' . (string)cfg('host', 'localhost'), [250]); if (!$ehlo[0]) return $fail('EHLO: ' . $ehlo[1]);
+  }
+  if ($user !== '') {
+    $r = $cmd('AUTH LOGIN', [334]); if (!$r[0]) return $fail('AUTH: ' . $r[1]);
+    $r = $cmd(base64_encode($user), [334]); if (!$r[0]) return $fail('שם משתמש: ' . $r[1]);
+    $r = $cmd(base64_encode($pass), [235]); if (!$r[0]) return $fail('ההתחברות לחשבון נכשלה (סיסמת אפליקציה שגויה?): ' . $r[1]);
+  }
+  $r = $cmd('MAIL FROM:<' . $from . '>', [250]); if (!$r[0]) return $fail('MAIL FROM: ' . $r[1]);
+  $r = $cmd('RCPT TO:<' . $to . '>', [250, 251]); if (!$r[0]) return $fail('RCPT: ' . $r[1]);
+  $r = $cmd('DATA', [354]); if (!$r[0]) return $fail('DATA: ' . $r[1]);
+  $msg = "From: =?UTF-8?B?" . base64_encode('עלמא') . "?= <$from>\r\nTo: <$to>\r\nSubject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\nDate: " . date('r') . "\r\nMessage-ID: <" . bin2hex(random_bytes(10)) . '@' . (string)cfg('host', 'localhost') . ">\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . chunk_split(base64_encode($body));
+  fwrite($fp, $msg . "\r\n.\r\n"); [$code, $txt] = $rd();
+  if ($code !== 250) return $fail('השליחה נדחתה: ' . $code . ' ' . mb_substr($txt, 0, 120));
+  $cmd('QUIT', [221]); @fclose($fp); return true;
+}
 function send_mail(string $to, string $subject, string $body): bool {
-  if (!filter_var($to, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $to)) return false;
+  $GLOBALS['MAIL_ERR'] = '';
+  if (!filter_var($to, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $to)) { $GLOBALS['MAIL_ERR'] = 'כתובת לא תקינה'; return false; }
   if (cfg('mail_transport', 'mail') === 'file') { return file_put_contents(PRIV . '/storage/mail.log', json_encode(['to' => $to, 'subject' => $subject, 'body' => $body], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX) !== false; }
+  if (cfg('smtp_host')) return smtp_send($to, $subject, $body);
   $from = (string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'));
   $h = "From: עלמא <$from>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\nX-Auto-Response-Suppress: All";
-  return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $body, $h, '-f' . $from);
+  $ok = @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $body, $h, '-f' . $from);
+  if (!$ok) $GLOBALS['MAIL_ERR'] = 'שרת הדואר של האחסון סירב.';
+  return $ok;
 }
 /** שולחת קוד חדש. מחזירה [ok, הודעה]. */
 function mfa_send_code(array $row, bool $force = false): array {
