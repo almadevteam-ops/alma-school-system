@@ -77,12 +77,12 @@ page_head('גבייה');
 ?>
 <h1>גבייה <span class="mu">(<?= count($fams) ?> תיקים)</span></h1>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
-<div class="card"><div class="stats">
-  <div><span class="mu">שכר לימוד</span><b><?= e(money($T['tuition'])) ?></b></div>
-  <div><span class="mu">חיובים נוספים</span><b><?= e(money($T['charges'])) ?></b></div>
-  <div><span class="mu">שולם</span><b class="ok"><?= e(money($T['paid'])) ?></b></div>
-  <div><span class="mu">יתרה</span><b class="er"><?= e(money($T['balance'])) ?></b></div>
-</div></div>
+<div class="tiles">
+  <div class="tile"><span class="mu">שכר לימוד</span><b><?= e(money($T['tuition'])) ?></b></div>
+  <div class="tile"><span class="mu">חיובים נוספים</span><b><?= e(money($T['charges'])) ?></b></div>
+  <div class="tile g"><span class="mu">שולם</span><b class="ok"><?= e(money($T['paid'])) ?></b></div>
+  <div class="tile p"><span class="mu">יתרה לגבייה</span><b class="er"><?= e(money($T['balance'])) ?></b></div>
+</div>
 <form class="bar" method="get">
   <label>חיפוש<input name="q" value="<?= e($q) ?>" placeholder="שם משפחה / תלמידה"></label>
   <label>מצב<select name="f"><option value="all">הכל</option><option value="debt"<?= $f === 'debt' ? ' selected' : '' ?>>עם יתרה</option><option value="clear"<?= $f === 'clear' ? ' selected' : '' ?>>ללא יתרה</option></select></label>
@@ -105,13 +105,11 @@ page_head('גבייה');
 </tr>
 <?php endforeach; if (!$fams) echo '<tr><td colspan="9" class="mu">אין תיקים להצגה.</td></tr>'; ?>
 </table></div>
-<div class="card">
-  <h2>גורמים משלמים (עמותות)</h2>
+<?php sec_open('payers', 'גורמים משלמים (עמותות)', count($payers) . ' גורמים', '◎'); ?>
   <p><?php foreach ($payers as $p) echo '<a class="btn sec" href="payer.php?id=' . (int)$p['id'] . '">' . e($p['name']) . ' (' . (int)$p['n'] . ' תיקים)</a> '; if (!$payers) echo '<span class="mu">עדיין לא הוגדר גורם משלם.</span> '; ?>
   <a class="btn" href="payer.php?new=1">+ גורם משלם חדש</a></p>
-</div>
-<div class="card">
-  <h2>חיוב לכל התיקים</h2>
+<?php sec_close(); ?>
+<?php sec_open('bulk', 'חיוב לכל התיקים', 'ספרי לימוד, סיור, חוגים', '＋', $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'bulk_charge' ? ['bulk'] : []); ?>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="bulk_charge">
     <label>סוג<select name="kind"><?php foreach (CHARGE_KINDS as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
     <label>תיאור<input name="label" maxlength="100" placeholder="למשל: ספרי לימוד תשפז" required></label>
@@ -121,9 +119,8 @@ page_head('גבייה');
     <button>הוספה</button>
   </form>
   <p class="mu">חיוב שכבר קיים בתיק עם אותו תיאור לא יתווסף שוב. אפשר לבטל חיוב בתוך התיק.</p>
-</div>
-<div class="card">
-  <h2>תלמידות בלי תיק גבייה (<?= count($nofile) ?>)</h2>
+<?php sec_close(); ?>
+<?php sec_open('nofile', 'תלמידות בלי תיק גבייה', count($nofile) . ' תלמידות', '☺', isset($_GET['nofile']) || ($_POST['act'] ?? '') === 'create_all' ? ['nofile'] : []); ?>
   <?php if (isset($_GET['nofile'])): ?>
   <div class="sc"><table><?php foreach ($nofile as $s): ?>
     <tr><td><?= e($s['name']) ?></td><td><?= e($s['grade']) ?></td><td><form method="post" action="family.php" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="create"><input type="hidden" name="student_id" value="<?= (int)$s['id'] ?>"><button class="sec">פתיחת תיק</button></form></td></tr>
@@ -135,5 +132,5 @@ page_head('גבייה');
     <button>פתיחת תיקים לכולן</button></form>
   <p class="mu">אחיות אפשר לאחד אחר כך: בתיק של אחת מהן, "צירוף תלמידה לתיק".</p>
   <?php endif; ?>
-</div>
+<?php sec_close(); ?>
 <?php page_foot();

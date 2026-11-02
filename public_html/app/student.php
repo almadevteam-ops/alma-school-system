@@ -75,7 +75,8 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
 ?>
 <h1><?= $row ? e($row['name']) : 'תלמידה חדשה' ?></h1>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
-<form method="post" class="card">
+<?php sec_open('details', 'פרטי תלמידה', trim(($row['grade'] ?? '') . ' ' . ($row['cls'] ?? '')) !== '' ? 'כיתה ' . trim(($row['grade'] ?? '') . ' ' . ($row['cls'] ?? '')) : '', '☺', ['details']); ?>
+<form method="post">
   <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>">
   <div class="fg">
   <?php foreach ($F as $k => [$lbl, $max, $sens]):
@@ -94,19 +95,18 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <a class="btn sec" href="students.php">חזרה</a>
   <?php if ($id && !valid_il_id((string)$val('idn')) && $val('idn') !== '' && can_see_ids()) echo '<p class="mu">שימו לב: מספר הזהות שהוזן לא עובר בדיקת תקינות.</p>'; ?>
 </form>
+<?php sec_close(); ?>
+<?php if ($id && in_array($u['role'], COLLECTION_ROLES, true)) notes_card([['id' => $id, 'name' => $row['name']]], 'student.php?id=' . $id); ?>
 <?php if ($id && in_array($u['role'], COLLECTION_ROLES, true)):
   $fid = $row['family_id'] ?? null; ?>
-<div class="card">
-  <h2>גבייה</h2>
+<?php sec_open('fee', 'גבייה', $fid ? 'יש תיק גבייה' : 'אין תיק גבייה', '₪'); ?>
   <?php if ($fid): ?><a class="btn sec" href="family.php?id=<?= (int)$fid ?>">פתיחת תיק הגבייה</a>
   <?php else: ?><form method="post" action="family.php" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="create"><input type="hidden" name="student_id" value="<?= (int)$id ?>"><button class="sec">פתיחת תיק גבייה</button></form>
   <?php endif; ?>
-</div>
+<?php sec_close(); ?>
 <?php endif; ?>
-<?php if ($id && in_array($u['role'], COLLECTION_ROLES, true)) notes_card([['id' => $id, 'name' => $row['name']]], 'student.php?id=' . $id); ?>
 <?php if ($id && can_see_ids()): ?>
-<div class="card">
-  <h2>מסמכים</h2>
+<?php sec_open('docs', 'מסמכים', count($sfiles) . ' קבצים', '▤'); ?>
   <?php if ($sfiles): ?>
   <div class="sc"><table>
     <tr><th>סוג</th><th>קובץ</th><th>גודל</th><th>הועלה</th><th></th></tr>
@@ -138,7 +138,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     <p class="mu">הקבצים נשמרים מוצפנים. כל צפייה והורדה נרשמות ביומן הפעולות.</p>
   </form>
   <?php endif; ?>
-</div>
+<?php sec_close(); ?>
 <?php endif; ?>
 <?php if ($id && $u['role'] === 'admin'): ?>
 <form method="post" class="card">

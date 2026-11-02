@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $pdo->prepare('UPDATE families SET name=?, monthly=?, months=?, method=?, collect_day=?, payer_id=?, payer_kind=?, discount_note=?, notes=?, updated_at=? WHERE id=?')
         ->execute([$name, $monthly, $months, $method, $day === '' ? null : (int)$day, $payer ?: null, $kind, mb_substr(trim((string)($_POST['discount_note'] ?? '')), 0, 255), $fam['notes'], now(), $id]);
       audit('family_update', 'family', (string)$id, "תעריף $monthly × $months");
-      redirect('family.php?id=' . $id . '&m=' . rawurlencode('נשמר.'));
+      redirect('family.php?id=' . $id . '&open=set&m=' . rawurlencode('נשמר.'));
     }
   } elseif ($act === 'add_charge') {
     $amt = money_in((string)($_POST['amount'] ?? '')); $kind = (string)($_POST['kind'] ?? 'other'); $label = mb_substr(trim((string)($_POST['label'] ?? '')), 0, 100);
@@ -54,13 +54,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     else {
       $pdo->prepare('INSERT INTO charges (family_id, kind, label, amount, created_by, created_at) VALUES (?,?,?,?,?,?)')->execute([$id, $kind, $label, $amt, $u['id'], now()]);
       audit('charge_add', 'family', (string)$id, "$label $amt");
-      redirect('family.php?id=' . $id . '&m=' . rawurlencode('החיוב נוסף.'));
+      redirect('family.php?id=' . $id . '&open=chg&m=' . rawurlencode('החיוב נוסף.'));
     }
   } elseif ($act === 'void_charge') {
     $cid = (int)($_POST['cid'] ?? 0);
     $pdo->prepare('UPDATE charges SET voided_at = ? WHERE id = ? AND family_id = ? AND voided_at IS NULL')->execute([now(), $cid, $id]);
     audit('charge_void', 'family', (string)$id, 'חיוב ' . $cid);
-    redirect('family.php?id=' . $id . '&m=' . rawurlencode('החיוב בוטל.'));
+    redirect('family.php?id=' . $id . '&open=chg&m=' . rawurlencode('החיוב בוטל.'));
   } elseif ($act === 'add_payment') {
     $amt = money_in((string)($_POST['amount'] ?? '')); $date = date_in((string)($_POST['paid_on'] ?? ''));
     $method = (string)($_POST['method'] ?? 'other'); $target = (string)($_POST['target'] ?? 'tuition');
@@ -81,24 +81,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->prepare('INSERT INTO payments (family_id, charge_id, for_month, amount, paid_on, method, ref, note, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
           ->execute([$id, $chargeId, ($fm >= 1 && $fm <= 12) ? $fm : null, $amt, $date, $method, $ref, $note, $u['id'], now()]);
         audit('payment_add', 'family', (string)$id, "$amt " . $method . ($fm ? " חודש $fm" : ''));
-        redirect('family.php?id=' . $id . '&m=' . rawurlencode('התשלום נרשם.'));
+        redirect('family.php?id=' . $id . '&open=pay&m=' . rawurlencode('התשלום נרשם.'));
       }
     }
   } elseif ($act === 'void_payment') {
     $pid = (int)($_POST['pid'] ?? 0);
     $pdo->prepare('UPDATE payments SET voided_at = ?, voided_by = ? WHERE id = ? AND family_id = ? AND voided_at IS NULL')->execute([now(), $u['id'], $pid, $id]);
     audit('payment_void', 'family', (string)$id, 'תשלום ' . $pid);
-    redirect('family.php?id=' . $id . '&m=' . rawurlencode('התשלום בוטל (נשמר ביומן).'));
+    redirect('family.php?id=' . $id . '&open=pay&m=' . rawurlencode('התשלום בוטל (נשמר ביומן).'));
   } elseif ($act === 'add_student') {
     $sid = (int)($_POST['student_id'] ?? 0);
     $pdo->prepare('UPDATE students SET family_id = ? WHERE id = ? AND family_id IS NULL')->execute([$id, $sid]);
     audit('family_student_add', 'family', (string)$id, 'תלמידה ' . $sid);
-    redirect('family.php?id=' . $id . '&m=' . rawurlencode('התלמידה צורפה.'));
+    redirect('family.php?id=' . $id . '&open=stu&m=' . rawurlencode('התלמידה צורפה.'));
   } elseif ($act === 'remove_student') {
     $sid = (int)($_POST['student_id'] ?? 0);
     $pdo->prepare('UPDATE students SET family_id = NULL WHERE id = ? AND family_id = ?')->execute([$sid, $id]);
     audit('family_student_remove', 'family', (string)$id, 'תלמידה ' . $sid);
-    redirect('family.php?id=' . $id . '&m=' . rawurlencode('התלמידה הוסרה מהתיק.'));
+    redirect('family.php?id=' . $id . '&open=stu&m=' . rawurlencode('התלמידה הוסרה מהתיק.'));
   }
   $fam = array_merge($fam, array_intersect_key($_POST, $fam));
 }
@@ -112,54 +112,22 @@ $ch = db()->prepare('SELECT c.*, (SELECT COALESCE(SUM(p.amount),0) FROM payments
 $py = db()->prepare('SELECT p.*, u.display_name who FROM payments p LEFT JOIN users u ON u.id = p.created_by WHERE p.family_id = ? ORDER BY p.paid_on DESC, p.id DESC'); $py->execute([$id]); $pays = $py->fetchAll();
 $free = db()->query('SELECT id, name, grade FROM students WHERE family_id IS NULL AND status = \'active\' ORDER BY name')->fetchAll();
 $chargeNames = array_column($charges, 'label', 'id');
+if ($err && $_SERVER['REQUEST_METHOD'] === 'POST') $_GET['open'] = ['add_payment' => 'pay', 'void_payment' => 'pay', 'save' => 'set', 'add_charge' => 'chg', 'void_charge' => 'chg', 'add_student' => 'stu', 'remove_student' => 'stu'][$_POST['act'] ?? ''] ?? 'notes';
 page_head($fam['name']);
 ?>
-<h1><?= e($fam['name']) ?> <span class="mu">תיק גבייה</span></h1>
+<div class="sub"><div class="in"><a href="collection.php">‹ חזרה לגבייה</a><b class="nm"><?= e($fam['name']) ?></b><span class="mu">תיק גבייה</span><span class="gap"></span><span class="mu">יתרה</span><b class="bal <?= $sum['balance'] > 0 ? 'er' : 'ok' ?>"><?= e(money($sum['balance'])) ?></b><a class="btn" href="family.php?id=<?= $id ?>&amp;open=pay#s-pay">רישום תשלום</a></div></div>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
-<div class="card">
+<div class="hero">
   <div class="stats">
     <div><span class="mu">חיוב שכר לימוד</span><b><?= e(money($sum['tuition'])) ?></b></div>
     <div><span class="mu">חיובים נוספים</span><b><?= e(money($sum['charges'])) ?></b></div>
     <div><span class="mu">שולם</span><b class="ok"><?= e(money($sum['paid'])) ?></b></div>
     <div><span class="mu">יתרה</span><b class="<?= $sum['balance'] > 0 ? 'er' : 'ok' ?>"><?= e(money($sum['balance'])) ?></b></div>
   </div>
-  <p><?= month_cells($sum) ?> <span class="mu">✓ שולם · ½ חלקי · · לא שולם</span></p>
-  <p class="mu">חודשים: <?= e(implode(', ', array_map(fn($m) => SCHOOL_MONTHS[$m], array_keys($sum['status'])))) ?></p>
+  <div class="mcs"><?= month_cells($sum) ?> <span class="mu">✓ שולם · ½ חלקי · · לא שולם</span></div>
 </div>
-<div class="card">
-  <h2>תלמידות בתיק</h2>
-  <div class="sc"><table><tr><th>שם</th><th>כיתה</th><th>אב</th><th>אם</th><th></th></tr>
-  <?php foreach ($studs as $s): ?>
-    <tr><td><a href="student.php?id=<?= (int)$s['id'] ?>"><?= e($s['name']) ?></a></td><td><?= e($s['grade']) ?></td>
-    <td><?= e(trim($s['f_name'] . ' ' . $s['f_phone'])) ?></td><td><?= e(trim($s['m_name'] . ' ' . $s['m_phone'])) ?></td>
-    <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="remove_student"><input type="hidden" name="student_id" value="<?= (int)$s['id'] ?>"><button class="sec">הסרה מהתיק</button></form></td></tr>
-  <?php endforeach; if (!$studs) echo '<tr><td colspan="5" class="mu">אין תלמידות בתיק.</td></tr>'; ?>
-  </table></div>
-  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="add_student">
-    <label>צירוף תלמידה לתיק<select name="student_id" required><option value="">בחרי…</option><?php foreach ($free as $s) echo '<option value="' . (int)$s['id'] . '">' . e($s['name'] . ' (' . $s['grade'] . ')') . '</option>'; ?></select></label>
-    <button>צירוף</button></form>
-</div>
-<form method="post" class="card"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="save">
-  <h2>הגדרות גבייה</h2>
-  <div class="fg">
-    <label>שם משפחה<input name="name" maxlength="120" value="<?= e($fam['name']) ?>" required></label>
-    <label>תעריף חודשי למשפחה (₪)<input name="monthly" inputmode="decimal" value="<?= e((float)$fam['monthly'] == 0 ? '0' : rtrim(rtrim((string)$fam['monthly'], '0'), '.')) ?>"></label>
-    <label>מספר חודשים<select name="months"><option value="10"<?= (int)$fam['months'] === 10 ? ' selected' : '' ?>>10 (ספטמבר–יוני)</option><option value="12"<?= (int)$fam['months'] === 12 ? ' selected' : '' ?>>12 (ספטמבר–אוגוסט)</option></select></label>
-    <label>צורת תשלום<select name="method"><option value="">לא נקבע</option><?php foreach (PAY_METHODS as $k => $v) echo '<option value="' . $k . '"' . ($fam['method'] === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
-    <label>יום גבייה בחודש<input name="collect_day" inputmode="numeric" maxlength="2" value="<?= e((string)($fam['collect_day'] ?? '')) ?>"></label>
-    <label>מי משלם<select name="payer"><?php
-      $cur = $fam['payer_kind'] === 'org' && $fam['payer_id'] ? 'p:' . (int)$fam['payer_id'] : $fam['payer_kind'];
-      if ($divorced) { echo '<option value="parents"' . ($cur === 'parents' ? ' selected' : '') . '>לא נבחר (הורים גרושים)</option>';
-        foreach (['father', 'mother'] as $k) echo '<option value="' . $k . '"' . ($cur === $k ? ' selected' : '') . '>' . e(PAYER_KINDS[$k]) . '</option>'; }
-      else echo '<option value="parents"' . ($cur === 'parents' || $cur === 'father' || $cur === 'mother' ? ' selected' : '') . '>הורים</option>';
-      foreach ($payers as $p) echo '<option value="p:' . (int)$p['id'] . '"' . ($cur === 'p:' . (int)$p['id'] ? ' selected' : '') . '>' . e($p['name']) . '</option>'; ?></select></label>
-    <label>הנחה / סיבה<input name="discount_note" maxlength="255" value="<?= e($fam['discount_note']) ?>" placeholder="למשל: הנחת אחיות"></label>
-  </div>
-  <button>שמירה</button> <a class="btn sec" href="collection.php">חזרה לגבייה</a>
-</form>
 <?php notes_card(array_map(fn($x) => ['id' => $x['id'], 'name' => $x['name']], $studs), 'family.php?id=' . $id); ?>
-<div class="card">
-  <h2>רישום תשלום</h2>
+<?php sec_open('pay', 'רישום תשלום והיסטוריה', count($pays) . ' תשלומים · שולם ' . money($sum['paid']), '₪'); ?>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="add_payment">
     <label>סכום (₪)<input name="amount" inputmode="decimal" required></label>
     <label>תאריך<input name="paid_on" value="<?= e(date('d/m/Y')) ?>" required></label>
@@ -179,9 +147,39 @@ page_head($fam['name']);
     <td><?php if ($v): ?><span class="mu">בוטל</span><?php else: ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="void_payment"><input type="hidden" name="pid" value="<?= (int)$p['id'] ?>"><button class="sec">ביטול</button></form><?php endif; ?></td></tr>
   <?php endforeach; if (!$pays) echo '<tr><td colspan="8" class="mu">עדיין לא נרשמו תשלומים.</td></tr>'; ?>
   </table></div>
-</div>
-<div class="card">
-  <h2>חיובים נוספים</h2>
+<?php sec_close(); ?>
+<?php sec_open('set', 'הגדרות גבייה', money($fam['monthly']) . ' לחודש · ' . (int)$fam['months'] . ' חודשים · ' . payer_label($fam), '⚙'); ?>
+<form method="post"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="save">
+  <div class="fg">
+    <label>שם משפחה<input name="name" maxlength="120" value="<?= e($fam['name']) ?>" required></label>
+    <label>תעריף חודשי למשפחה (₪)<input name="monthly" inputmode="decimal" value="<?= e((float)$fam['monthly'] == 0 ? '0' : rtrim(rtrim((string)$fam['monthly'], '0'), '.')) ?>"></label>
+    <label>מספר חודשים<select name="months"><option value="10"<?= (int)$fam['months'] === 10 ? ' selected' : '' ?>>10 (ספטמבר–יוני)</option><option value="12"<?= (int)$fam['months'] === 12 ? ' selected' : '' ?>>12 (ספטמבר–אוגוסט)</option></select></label>
+    <label>צורת תשלום<select name="method"><option value="">לא נקבע</option><?php foreach (PAY_METHODS as $k => $v) echo '<option value="' . $k . '"' . ($fam['method'] === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
+    <label>יום גבייה בחודש<input name="collect_day" inputmode="numeric" maxlength="2" value="<?= e((string)($fam['collect_day'] ?? '')) ?>"></label>
+    <label>מי משלם<select name="payer"><?php
+      $cur = $fam['payer_kind'] === 'org' && $fam['payer_id'] ? 'p:' . (int)$fam['payer_id'] : $fam['payer_kind'];
+      if ($divorced) { echo '<option value="parents"' . ($cur === 'parents' ? ' selected' : '') . '>לא נבחר (הורים גרושים)</option>';
+        foreach (['father', 'mother'] as $k) echo '<option value="' . $k . '"' . ($cur === $k ? ' selected' : '') . '>' . e(PAYER_KINDS[$k]) . '</option>'; }
+      else echo '<option value="parents"' . ($cur === 'parents' || $cur === 'father' || $cur === 'mother' ? ' selected' : '') . '>הורים</option>';
+      foreach ($payers as $p) echo '<option value="p:' . (int)$p['id'] . '"' . ($cur === 'p:' . (int)$p['id'] ? ' selected' : '') . '>' . e($p['name']) . '</option>'; ?></select></label>
+    <label>הנחה / סיבה<input name="discount_note" maxlength="255" value="<?= e($fam['discount_note']) ?>" placeholder="למשל: הנחת אחיות"></label>
+  </div>
+  <button>שמירה</button> <a class="btn sec" href="collection.php">חזרה לגבייה</a>
+</form>
+<?php sec_close(); ?>
+<?php sec_open('stu', 'תלמידות בתיק', count($studs) . ' תלמידות', '☺'); ?>
+  <div class="sc"><table><tr><th>שם</th><th>כיתה</th><th>אב</th><th>אם</th><th></th></tr>
+  <?php foreach ($studs as $s): ?>
+    <tr><td><a href="student.php?id=<?= (int)$s['id'] ?>"><?= e($s['name']) ?></a></td><td><?= e($s['grade']) ?></td>
+    <td><?= e(trim($s['f_name'] . ' ' . $s['f_phone'])) ?></td><td><?= e(trim($s['m_name'] . ' ' . $s['m_phone'])) ?></td>
+    <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="remove_student"><input type="hidden" name="student_id" value="<?= (int)$s['id'] ?>"><button class="sec">הסרה מהתיק</button></form></td></tr>
+  <?php endforeach; if (!$studs) echo '<tr><td colspan="5" class="mu">אין תלמידות בתיק.</td></tr>'; ?>
+  </table></div>
+  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="add_student">
+    <label>צירוף תלמידה לתיק<select name="student_id" required><option value="">בחרי…</option><?php foreach ($free as $s) echo '<option value="' . (int)$s['id'] . '">' . e($s['name'] . ' (' . $s['grade'] . ')') . '</option>'; ?></select></label>
+    <button>צירוף</button></form>
+<?php sec_close(); ?>
+<?php sec_open('chg', 'חיובים נוספים', 'ספרים, סיור, חוגים · ' . count($charges) . ' חיובים', '＋'); ?>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="add_charge">
     <label>סוג<select name="kind"><?php foreach (CHARGE_KINDS as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
     <label>תיאור<input name="label" maxlength="100" placeholder="אופציונלי"></label>
@@ -193,5 +191,5 @@ page_head($fam['name']);
     <td><?php if ($v): ?><span class="mu">בוטל</span><?php else: ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="void_charge"><input type="hidden" name="cid" value="<?= (int)$c['id'] ?>"><button class="sec">ביטול</button></form><?php endif; ?></td></tr>
   <?php endforeach; if (!$charges) echo '<tr><td colspan="4" class="mu">אין חיובים נוספים.</td></tr>'; ?>
   </table></div>
-</div>
+<?php sec_close(); ?>
 <?php page_foot();

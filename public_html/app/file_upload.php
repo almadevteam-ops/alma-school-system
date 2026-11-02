@@ -18,7 +18,7 @@ if ($act === 'delete') {
     remove_stored_file($r['stored']);
     audit('file_delete', 'student', (string)$sid, $r['orig_name']);
   }
-  redirect($back . '&m=' . rawurlencode('המסמך נמחק.'));
+  redirect($back . '&open=docs&m=' . rawurlencode('המסמך נמחק.'));
 }
 $kind = (string)($_POST['kind'] ?? 'id');
 $ok = 0; $errs = [];
@@ -32,4 +32,4 @@ if ($files && is_array($files['name'])) {
   }
 } else { $errs[] = 'לא נבחר קובץ.'; }
 $m = ($ok ? 'הועלו ' . $ok . ' מסמכים. ' : '') . implode(' | ', $errs);
-redirect($back . '&' . ($errs ? 'e=' : 'm=') . rawurlencode($m));
+redirect($back . '&open=docs&' . ($errs ? 'e=' : 'm=') . rawurlencode($m));

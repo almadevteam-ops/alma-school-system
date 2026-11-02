@@ -43,8 +43,7 @@ function notes_card(array $studs, string $back): void {
   if ($notes) { $nid = implode(',', array_map(fn($n) => (int)$n['id'], $notes));
     foreach (db()->query("SELECT id, note_id, orig_name, size FROM note_files WHERE note_id IN ($nid) ORDER BY id")->fetchAll() as $f) $files[(int)$f['note_id']][] = $f; }
   ?>
-<div class="card">
-  <h2>הערות ושיחות</h2>
+<?php sec_open('notes', 'הערות ושיחות', count($notes) . ' הערות' . ($notes ? ' · האחרונה: ' . date('d/m/Y', strtotime((string)$notes[0]['created_at'])) . ' · ' . ($notes[0]['author_name'] ?: '') : ''), '✎', ['notes']); ?>
   <form method="post" action="note_add.php" enctype="multipart/form-data" class="notef">
     <?= csrf_field() ?><input type="hidden" name="back" value="<?= e($back) ?>">
     <?php if (count($studs) > 1): ?><label class="mu">על איזו תלמידה?<select name="student_id"><?php foreach ($studs as $s) echo '<option value="' . (int)$s['id'] . '">' . e($s['name']) . '</option>'; ?></select></label>
@@ -60,5 +59,5 @@ function notes_card(array $studs, string $back): void {
     <?php foreach ($files[(int)$n['id']] ?? [] as $f): ?><a class="btn sec sm" href="note_file.php?id=<?= (int)$f['id'] ?>" target="_blank" rel="noopener"><?= e($f['orig_name']) ?></a> <?php endforeach; ?>
   </div>
   <?php endforeach; ?>
-</div>
+<?php sec_close(); ?>
 <?php }

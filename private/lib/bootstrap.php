@@ -170,12 +170,23 @@ function page_head(string $title, bool $nav = true): void {
   echo '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
      . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="stylesheet" href="/app/assets/style.css"></head><body>';
   if ($nav && ($u = user())) {
-    echo '<header class="top"><b>עלמא – ניהול תלמידות</b><nav><a href="students.php">תלמידות</a><a href="collection.php">גבייה</a><a href="security.php">אבטחה</a>';
-    if ($u['role'] === 'admin') echo '<a href="import.php">ייבוא</a><a href="users.php">משתמשים</a><a href="audit.php">יומן פעולות</a><a href="health.php">בדיקת מערכת</a>';
+    $cur = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    $links = ['students.php' => 'תלמידות', 'collection.php' => 'גבייה', 'security.php' => 'אבטחה'];
+    if ($u['role'] === 'admin') $links += ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'health.php' => 'בדיקת מערכת'];
+    $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'payments_import.php' => 'collection.php'];
+    $on = $alias[$cur] ?? $cur;
+    echo '<header class="top"><a class="brand" href="students.php"><img src="/app/assets/logo-mark.png" alt=""><b>עלמא</b><span>ניהול תלמידות</span></a><nav>';
+    foreach ($links as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';
     echo '</nav><form method="post" action="logout.php" class="inl">' . csrf_field() . '<span class="mu">' . e($u['name']) . '</span> <button class="lnk">יציאה</button></form></header>';
   }
   echo '<main>';
 }
+/** סקשן מתקפל. פתוח אם הוא ב-?open=a,b בכתובת, ואם אין פרמטר – לפי $defaults. */
+function sec_open(string $key, string $title, string $summary = '', string $ico = '•', array $defaults = []): void {
+  $open = isset($_GET['open']) ? in_array($key, explode(',', (string)$_GET['open']), true) : in_array($key, $defaults, true);
+  echo '<details class="fsec" id="s-' . e($key) . '"' . ($open ? ' open' : '') . '><summary><span class="ico">' . e($ico) . '</span>' . e($title) . '<span class="sm2">' . e($summary) . '</span></summary><div class="bd">';
+}
+function sec_close(): void { echo '</div></details>'; }
 function page_foot(): void { echo '</main></body></html>'; }
 
 const GRADES = ['ז', 'ח', 'ט', 'י', 'יא', 'יב'];
