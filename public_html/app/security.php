@@ -3,7 +3,7 @@ require __DIR__ . '/../../private/lib/bootstrap.php';
 $u = require_login();
 $uid = $u['id'];
 $msg = ''; $err = ''; $codes = null;
-$st = db()->prepare('SELECT pass_hash, totp_enabled, username FROM users WHERE id = ?'); $st->execute([$uid]); $me = $st->fetch();
+$st = db()->prepare('SELECT pass_hash, totp_enabled, username, mfa_method, mfa_email FROM users WHERE id = ?'); $st->execute([$uid]); $me = $st->fetch();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? '');
@@ -74,9 +74,11 @@ page_head('אבטחה');
 <?php else: ?>
 <div class="card">
   <h2>אימות דו-שלבי</h2>
+  <?php if ($me['mfa_method'] === 'email'): ?><p class="ok">פעיל ✓ בקוד שנשלח למייל <span dir="ltr"><?= e(mfa_mask((string)$me['mfa_email'])) ?></span></p>
+  <p class="mu">לשינוי כתובת המייל או שיטת האימות פני למנהלת.</p><?php else: ?>
   <p class="ok">פעיל ✓</p>
   <form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="newcodes">
-    <p class="mu">אם איבדתם את קודי השחזור, אפשר להפיק חדשים (הישנים יתבטלו).</p><button class="sec">הפקת קודי שחזור חדשים</button></form>
+    <p class="mu">אם איבדתם את קודי השחזור, אפשר להפיק חדשים (הישנים יתבטלו).</p><button class="sec">הפקת קודי שחזור חדשים</button></form><?php endif; ?>
 </div>
 <?php endif; ?>
 

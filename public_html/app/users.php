@@ -17,14 +17,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit('user_create', 'user', $un, 'תפקיד: ' . $role); $msg = 'המשתמשת נוצרה.';
       } catch (PDOException $x) { $err = 'שם המשתמש כבר קיים.'; }
     }
-  } elseif ($act === 'toggle' || $act === 'reset' || $act === 'role' || $act === 'reset2fa') {
+  } elseif ($act === 'toggle' || $act === 'reset' || $act === 'role' || $act === 'reset2fa' || $act === 'mfa') {
     $uid = (int)($_POST['uid'] ?? 0);
     if ($uid === $me['id'] && $act !== 'reset') { $err = 'אי אפשר לשנות את המשתמשת שלך.'; }
-    elseif ($act === 'toggle') {
+    elseif ($act === 'mfa') {
+      $method = ($_POST['method'] ?? '') === 'email' ? 'email' : 'app'; $mail = mb_substr(trim((string)($_POST['mail'] ?? '')), 0, 150);
+      if ($method === 'email' && !filter_var($mail, FILTER_VALIDATE_EMAIL)) $err = 'נא להזין כתובת מייל תקינה.';
+      elseif ($method === 'email') {
+        db()->prepare("UPDATE users SET mfa_method = 'email', mfa_email = ?, totp_enabled = 1, mfa_code_hash = NULL, pw_ver = pw_ver + 1 WHERE id = ?")->execute([$mail, $uid]);
+        audit('mfa_method', 'user', (string)$uid, 'email'); $msg = 'האימות הוחלף לקוד במייל. המשתמשת נותקה מכל המכשירים.';
+      } else {
+        db()->prepare("UPDATE users SET mfa_method = 'app', mfa_code_hash = NULL, totp_enabled = IF(totp_secret IS NULL, 0, 1), pw_ver = pw_ver + 1 WHERE id = ?")->execute([$uid]);
+        audit('mfa_method', 'user', (string)$uid, 'app'); $msg = 'האימות הוחלף לאפליקציה. אם לא הוגדרה אפליקציה, המשתמשת תגדיר אותה בכניסה הבאה.';
+      }
+    } elseif ($act === 'toggle') {
       db()->prepare('UPDATE users SET active = 1 - active, pw_ver = pw_ver + 1 WHERE id = ?')->execute([$uid]);
       audit('user_toggle', 'user', (string)$uid); $msg = 'עודכן.';
     } elseif ($act === 'reset2fa') {
-      db()->prepare('UPDATE users SET totp_secret = NULL, totp_enabled = 0, totp_last_step = 0, pw_ver = pw_ver + 1 WHERE id = ?')->execute([$uid]);
+      db()->prepare('UPDATE users SET totp_secret = NULL, totp_enabled = 0, totp_last_step = 0, mfa_method = \'app\', mfa_code_hash = NULL, pw_ver = pw_ver + 1 WHERE id = ?')->execute([$uid]);
       db()->prepare('DELETE FROM recovery_codes WHERE user_id = ?')->execute([$uid]);
       audit('2fa_reset', 'user', (string)$uid); $msg = 'האימות הדו-שלבי אופס. בכניסה הבאה המשתמשת תגדיר אותו מחדש.';
     } elseif ($act === 'role') {
@@ -42,20 +52,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 }
-$users = db()->query('SELECT id, username, display_name, role, active, last_login, totp_enabled FROM users ORDER BY id')->fetchAll();
+$users = db()->query('SELECT id, username, display_name, role, active, last_login, totp_enabled, mfa_method, mfa_email FROM users ORDER BY id')->fetchAll();
 page_head('משתמשים');
 ?>
 <h1>משתמשים</h1>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <div class="card sc"><table>
-<tr><th>שם</th><th>משתמש</th><th>תפקיד</th><th>כניסה אחרונה</th><th>2FA</th><th>פעילה</th><th>איפוס סיסמה</th></tr>
+<tr><th>שם</th><th>משתמש</th><th>תפקיד</th><th>כניסה אחרונה</th><th>אימות דו-שלבי</th><th>פעילה</th><th>איפוס סיסמה</th></tr>
 <?php foreach ($users as $x): ?>
 <tr>
   <td><?= e($x['display_name']) ?></td><td><?= e($x['username']) ?></td>
   <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="role"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>">
     <select name="role"><?php foreach (ROLES as $k => $v) echo '<option value="' . $k . '"' . ($x['role'] === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select> <button class="sec">עדכון</button></form></td>
   <td><?= e($x['last_login'] ?: '—') ?></td>
-  <td><?php if ($x['totp_enabled']): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="reset2fa"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>"><span class="ok">פעיל</span> <button class="sec">איפוס</button></form><?php else: ?><span class="er">לא מוגדר</span><?php endif; ?></td>
+  <td><?php if ($x['totp_enabled']): ?><span class="ok"><?= $x['mfa_method'] === 'email' ? 'מייל ✓' : 'אפליקציה ✓' ?></span><?php else: ?><span class="er">לא מוגדר</span><?php endif; ?>
+    <form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="mfa"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>">
+      <select name="method"><option value="app"<?= $x['mfa_method'] === 'app' ? ' selected' : '' ?>>אפליקציה</option><option value="email"<?= $x['mfa_method'] === 'email' ? ' selected' : '' ?>>קוד במייל</option></select>
+      <input type="email" name="mail" placeholder="כתובת מייל" value="<?= e($x['mfa_email']) ?>" dir="ltr"> <button class="sec">עדכון</button></form>
+    <?php if ($x['totp_enabled']): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="reset2fa"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>"><button class="sec">איפוס</button></form><?php endif; ?></td>
   <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="toggle"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>"><button class="sec"><?= $x['active'] ? 'פעילה – השבתה' : 'מושבתת – הפעלה' ?></button></form></td>
   <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="reset"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>"><input type="password" name="pw" placeholder="סיסמה חדשה" autocomplete="new-password"> <button class="sec">איפוס</button></form></td>
 </tr>

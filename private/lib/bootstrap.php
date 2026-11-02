@@ -32,6 +32,7 @@ require_once __DIR__ . '/files.php';
 require_once __DIR__ . '/import.php';
 require_once __DIR__ . '/collection.php';
 require_once __DIR__ . '/notes.php';
+require_once __DIR__ . '/mfa_email.php';
 
 // ---- HTTPS ----
 if (cfg('force_https', true) && !is_https()) {

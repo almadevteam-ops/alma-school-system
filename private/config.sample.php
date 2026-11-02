@@ -10,4 +10,5 @@ return [
   'force_https' => true,
   'idle'        => 1800,   // ניתוק אחרי 30 דקות חוסר פעילות
   'maxage'      => 28800,  // ניתוק מוחלט אחרי 8 שעות
+  // 'mail_from' => 'noreply@alma-school.co.il', // כתובת השולח של קודי הכניסה במייל (ברירת מחדל: noreply@ + host)
 ];

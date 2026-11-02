@@ -26,6 +26,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if (!empty($row['totp_enabled'])) {
         session_regenerate_id(true);
         $_SESSION['p2'] = ['id' => (int)$row['id'], 't' => time()];
+        if (($row['mfa_method'] ?? 'app') === 'email') {
+          [$sent, $why] = mfa_send_code($row, true);
+          if (!$sent) { unset($_SESSION['p2']); $err = $why; goto render; }
+        }
         redirect('login2.php');
       }
       finish_login($row);
@@ -33,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $err = 'שם משתמש או סיסמה שגויים.';
   }
 }
+render:
 page_head('כניסה', false);
 ?>
 <div class="card login">
