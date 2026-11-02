@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 page_head('כניסה', false);
 ?>
 <div class="card login">
-  <img class="lg" src="/app/assets/logo-full.png" alt="עלמא – כל עלמה עולם">
+  <img class="lg" src="/app/assets/logo-full.png" alt="עלמא – כל עלמה עולם" width="110" height="181">
   <h1>כניסה למערכת</h1>
   <?php if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
   <form method="post" autocomplete="off">
