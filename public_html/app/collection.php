@@ -113,7 +113,7 @@ page_head('גבייה');
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="bulk_charge">
     <label>סוג<select name="kind"><?php foreach (CHARGE_KINDS as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
     <label>תיאור<input name="label" maxlength="100" placeholder="למשל: ספרי לימוד תשפז" required></label>
-    <label>אופן חישוב<select name="mode"><option value="flat">סכום קבוע לכל תלמידה</option><option value="books">ספרים לפי כיתה (ז-ח 250, ט-יא 350, יב לפי צורך)</option></select></label>
+    <label>אופן חישוב<select name="mode"><option value="flat">סכום קבוע לכל תלמידה</option><option value="books">ספרים לפי כיתה (ז, ח, יב 250 · ט, י 350 · יא 450)</option></select></label>
     <label>סכום לתלמידה<input name="amount" inputmode="decimal"></label>
     <label class="chk"><input type="checkbox" name="ok" value="1"> לאשר הוספה לכל התיקים הפעילים</label>
     <button>הוספה</button>
