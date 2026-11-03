@@ -124,6 +124,7 @@ $badge = function (array $x): string {
   return '<span class="late ' . ($x['behind'] >= 2 ? 'hi' : 'lo') . '" title="' . e('שכר לימוד חסר: ' . money($x['gap']) . ($x['cgap'] ? ' · חיובים נוספים שלא שולמו: ' . money($x['cgap']) : '')) . '">' . e($t) . '</span>';
 };
 ?>
+<?php sec_open('list', 'רשימת התלמידות', count($fams) . ' תיקים' . ($view === 'calls' ? ' · רשימת התקשרות' : ''), '☺', ['list']); ?>
 <?php if ($view === 'calls'): ?>
 <div class="calls">
 <?php foreach ($fams as $r): $d = $data[(int)$r['id']]; $x = $arr[(int)$r['id']]; $ct = $contacts[(int)$r['id']] ?? []; ?>
@@ -141,7 +142,7 @@ $badge = function (array $x): string {
 <?php endforeach; if (!$fams) echo '<p class="mu">אין תיקים להצגה.</p>'; ?>
 </div>
 <?php else: ?>
-<div class="card sc"><table>
+<div class="sc"><table>
 <tr><th>משפחה</th><th>תלמידות</th><th>תעריף</th><th>חיובים</th><th>שולם</th><th>יתרה</th><th>פיגור היום</th><th>חודשים</th><th>אמצעי</th><th>יום</th></tr>
 <?php foreach ($fams as $r): $d = $data[(int)$r['id']]; ?>
 <tr>
@@ -157,6 +158,7 @@ $badge = function (array $x): string {
 <?php endforeach; if (!$fams) echo '<tr><td colspan="10" class="mu">אין תיקים להצגה.</td></tr>'; ?>
 </table></div>
 <?php endif; ?>
+<?php sec_close(); ?>
 <?php sec_open('payers', 'גורמים משלמים (עמותות)', count($payers) . ' גורמים', '◎'); ?>
   <p><?php foreach ($payers as $p) echo '<a class="btn sec" href="payer.php?id=' . (int)$p['id'] . '">' . e($p['name']) . ' (' . (int)$p['n'] . ' תיקים)</a> '; if (!$payers) echo '<span class="mu">עדיין לא הוגדר גורם משלם.</span> '; ?>
   <a class="btn" href="payer.php?new=1">+ גורם משלם חדש</a></p>

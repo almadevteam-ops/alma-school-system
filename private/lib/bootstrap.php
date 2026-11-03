@@ -203,7 +203,12 @@ function sec_open(string $key, string $title, string $summary = '', string $ico 
   echo '<details class="fsec" id="s-' . e($key) . '"' . ($open ? ' open' : '') . '><summary><span class="ico">' . e($ico) . '</span>' . e($title) . '<span class="sm2">' . e($summary) . '</span></summary><div class="bd">';
 }
 function sec_close(): void { echo '</div></details>'; }
-function page_foot(): void { echo '</main></body></html>'; }
+/** מספר הגרסה (למשל 1.0.31), נכתב ל-private/VERSION בכל פריסה. */
+function app_version(): string {
+  $f = PRIV . '/VERSION'; $v = is_file($f) ? trim((string)file_get_contents($f)) : '';
+  return preg_match('/^\d+\.\d+\.\d+/', $v, $m) ? $m[0] : '';
+}
+function page_foot(): void { $v = app_version(); echo '</main>' . ($v !== '' && user() ? '<footer class="ver">גרסה <bdi dir="ltr">' . e($v) . '</bdi></footer>' : '') . '</body></html>'; }
 
 const GRADES = ['ז', 'ח', 'ט', 'י', 'יא', 'יב'];
 const STATUS = ['active' => 'פעילה', 'left' => 'עזבה', 'pending' => 'ממתינה לאישור'];

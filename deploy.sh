@@ -17,5 +17,8 @@ cp private/schema.sql private/config.sample.php "$PRIV/"
 chmod 700 "$PRIV/sessions" "$PRIV/storage" "$PRIV/backups"
 # אחרי ההתקנה הראשונה – לא להחזיר את setup.php לשרת
 if [ -f "$PRIV/installed.flag" ]; then rm -f "$PUB/setup.php"; fi
-echo "$(git rev-parse --short HEAD 2>/dev/null) $(date '+%Y-%m-%d %H:%M')" > "$PRIV/VERSION"
+# גרסה: MAJOR.MINOR מהקובץ VERSION_BASE, ומספר הבנייה = מספר הקומיטים (עולה אוטומטית בכל עדכון)
+BASE="$(tr -d ' \r\n' < VERSION_BASE 2>/dev/null || echo 1.0)"
+BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
+echo "$BASE.$BUILD ($(git rev-parse --short HEAD 2>/dev/null), $(date '+%Y-%m-%d %H:%M'))" > "$PRIV/VERSION"
 echo "deployed to $PUB"

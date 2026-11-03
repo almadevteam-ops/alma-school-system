@@ -110,3 +110,4 @@ input[type=file]{width:100%}.notef input,.notef textarea{width:100%}
 .tel:hover{background:#e3edc9}.tel svg{color:var(--gd);flex:none}.tel span{flex:1;min-width:0}.tel bdi{font-weight:700;color:var(--gd)}
 @media(max-width:640px){.calls{grid-template-columns:1fr}.seg{display:flex}.seg a{flex:1;text-align:center}}
 td.n{white-space:nowrap}
+.ver{text-align:center;color:var(--mu);font-size:12px;padding:0 0 22px}
