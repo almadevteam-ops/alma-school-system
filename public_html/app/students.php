@@ -28,7 +28,8 @@ page_head('תלמידות');
   <button>סינון</button>
   <?php if (can_edit()) echo '<a class="btn sec" href="student.php">+ תלמידה חדשה</a>'; ?>
 </form>
-<div class="card sc"><table>
+<?php sec_open('list', 'רשימת התלמידות', $total . ' תוצאות', '☺', ['list']); ?>
+<div class="sc"><table>
 <tr><th>#</th><th>שם</th><th>כיתה</th><th>ת״ז</th><th>עיר</th><th>טלפון</th><th>סטטוס</th><?php if (in_array($u['role'], COLLECTION_ROLES, true)) echo '<th>גבייה</th>'; ?></tr>
 <?php foreach ($rows as $i => $r): ?>
 <tr>
@@ -53,4 +54,5 @@ if ($pages > 1) {
   }
   echo '</p>';
 }
+sec_close();
 page_foot();
