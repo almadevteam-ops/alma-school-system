@@ -15,6 +15,8 @@ $checks['גרסת המערכת'] = [is_file(PRIV . '/VERSION') ? trim((string)fi
 $checks['הצפנת AES-256-GCM זמינה'] = [in_array('aes-256-gcm', openssl_get_cipher_methods(), true) ? 'כן' : 'לא', in_array('aes-256-gcm', openssl_get_cipher_methods(), true)];
 $checks['מפתח הצפנה (private/app.key) קיים'] = [is_file(PRIV . '/app.key') ? 'כן – חובה לגבות אותו!' : 'עדיין לא נוצר (ייווצר בהעלאת הקובץ הראשון)', true];
 $checks['עדכוני מסד נתונים'] = [migrations_pending() ? 'ממתינים – יש להריץ בדף עדכון' : 'מעודכן', !migrations_pending()];
+$bk = bk_status(); $bkAge = isset($bk['time']) ? time() - (int)$bk['time'] : null;
+$checks['גיבוי אוטומטי אחרון'] = [!$bk ? 'עדיין לא בוצע – ראו דף גיבויים' : (empty($bk['ok']) ? 'נכשל: ' . ($bk['error'] ?? '') : date('d/m/Y H:i', (int)$bk['time'])), !empty($bk['ok']) && $bkAge < 36 * 3600];
 $checks['חיבור HTTPS'] = [is_https() ? 'כן' : 'לא', is_https()];
 $checks['גרסת מסד נתונים'] = [(string)db()->query('SELECT VERSION()')->fetchColumn(), true];
 $checks['תיקיית סשנים כתיבה'] = [is_writable(PRIV . '/sessions') ? 'כן' : 'לא', is_writable(PRIV . '/sessions')];

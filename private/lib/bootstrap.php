@@ -33,9 +33,10 @@ require_once __DIR__ . '/import.php';
 require_once __DIR__ . '/collection.php';
 require_once __DIR__ . '/notes.php';
 require_once __DIR__ . '/mfa_email.php';
+require_once __DIR__ . '/backup.php';
 
 // ---- HTTPS ----
-if (cfg('force_https', true) && !is_https()) {
+if (PHP_SAPI !== 'cli' && cfg('force_https', true) && !is_https()) {
   $h = cfg('host') ?: ($_SERVER['HTTP_HOST'] ?? '');
   redirect('https://' . $h . ($_SERVER['REQUEST_URI'] ?? '/'));
 }
@@ -187,7 +188,7 @@ function page_head(string $title, bool $nav = true): void {
     foreach (['students.php' => 'תלמידות', 'collection.php' => 'גבייה', 'security.php' => 'אבטחה'] as $f => $l)
       echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . ' title="' . e($l) . '">' . $ic($icons[$f]) . '<span>' . e($l) . '</span></a>';
     if ($u['role'] === 'admin') {
-      $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'health.php' => 'בדיקת מערכת'];
+      $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'backups.php' => 'גיבויים', 'health.php' => 'בדיקת מערכת'];
       echo '<details class="menu' . (isset($adm[$on]) ? ' on' : '') . '"><summary title="ניהול">' . $ic($icons['admin']) . '<span>ניהול</span></summary><div class="dd">';
       foreach ($adm as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';
       echo '</div></details>';
