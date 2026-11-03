@@ -54,40 +54,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 }
+$short = fn(string $l): string => trim((string)preg_replace('/\s*\(.*$/u', '', $l));
 $users = db()->query('SELECT id, username, display_name, role, active, last_login, totp_enabled, mfa_method, mfa_email FROM users ORDER BY id')->fetchAll();
 page_head('משתמשים');
 ?>
-<h1>משתמשים</h1>
+<h1>משתמשים <span class="mu">(<?= count($users) ?>)</span></h1>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
-<div class="card sc"><table>
-<tr><th>שם</th><th>משתמש</th><th>תפקיד</th><th>כניסה אחרונה</th><th>אימות דו-שלבי</th><th>פעילה</th><th>איפוס סיסמה</th></tr>
-<?php foreach ($users as $x): ?>
-<tr>
-  <td><?= e($x['display_name']) ?></td><td><?= e($x['username']) ?></td>
-  <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="role"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>">
-    <select name="role"><?php foreach (ROLES as $k => $v) echo '<option value="' . $k . '"' . ($x['role'] === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select> <button class="sec">עדכון</button></form></td>
-  <td><?= e($x['last_login'] ?: '—') ?></td>
-  <td><?php if ($x['totp_enabled']): ?><span class="ok"><?= $x['mfa_method'] === 'email' ? 'מייל ✓' : 'אפליקציה ✓' ?></span><?php else: ?><span class="er">לא מוגדר</span><?php endif; ?>
-    <form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="mfa"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>">
-      <select name="method"><option value="app"<?= $x['mfa_method'] === 'app' ? ' selected' : '' ?>>אפליקציה</option><option value="email"<?= $x['mfa_method'] === 'email' ? ' selected' : '' ?>>קוד במייל</option></select>
-      <input type="email" name="mail" placeholder="כתובת מייל" value="<?= e($x['mfa_email']) ?>" dir="ltr"> <button class="sec">עדכון</button></form>
-    <?php if ($x['totp_enabled']): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="reset2fa"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>"><button class="sec">איפוס</button></form><?php endif; ?></td>
-  <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="toggle"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>"><button class="sec"><?= $x['active'] ? 'פעילה – השבתה' : 'מושבתת – הפעלה' ?></button></form></td>
-  <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="reset"><input type="hidden" name="uid" value="<?= (int)$x['id'] ?>"><input type="password" name="pw" placeholder="סיסמה חדשה" autocomplete="new-password"> <button class="sec">איפוס</button></form></td>
-</tr>
+<div class="ucards">
+<?php foreach ($users as $x): $self = (int)$x['id'] === (int)$me['id']; $uid = (int)$x['id'];
+  $hid = fn(string $act) => csrf_field() . '<input type="hidden" name="act" value="' . $act . '"><input type="hidden" name="uid" value="' . $uid . '">'; ?>
+  <div class="uc<?= $x['active'] ? '' : ' off' ?>">
+    <div class="uh">
+      <span class="av" aria-hidden="true"><?= e(mb_substr((string)$x['display_name'], 0, 1)) ?></span>
+      <div class="un"><b><?= e($x['display_name']) ?><?= $self ? ' <span class="pill me">אני</span>' : '' ?></b><bdi dir="ltr" class="mu"><?= e($x['username']) ?></bdi></div>
+      <span class="st <?= $x['active'] ? 'on' : 'off' ?>"><?= $x['active'] ? 'פעילה' : 'מושבתת' ?></span>
+    </div>
+    <div class="uf">
+      <div><span class="mu">תפקיד</span><span class="v"><span class="role r-<?= e($x['role']) ?>" title="<?= e(ROLES[$x['role']] ?? '') ?>"><?= e($short(ROLES[$x['role']] ?? $x['role'])) ?></span></span></div>
+      <div><span class="mu">אימות דו-שלבי</span><span class="v"><?php if ($x['totp_enabled']): ?><span class="ok">✓ <?= $x['mfa_method'] === 'email' ? 'קוד במייל' : 'אפליקציה' ?></span><?php if ($x['mfa_method'] === 'email' && $x['mfa_email']) echo '<bdi dir="ltr" class="mu sub2">' . e(mfa_mask($x['mfa_email'])) . '</bdi>'; ?><?php else: ?><span class="er">לא מוגדר עדיין</span><?php endif; ?></span></div>
+      <div><span class="mu">כניסה אחרונה</span><span class="v"><?= $x['last_login'] ? '<bdi dir="ltr">' . e(date('d/m/Y H:i', strtotime((string)$x['last_login']))) . '</bdi>' : '<span class="mu">עוד לא נכנסה</span>' ?></span></div>
+    </div>
+    <details class="mg">
+      <summary>ניהול המשתמשת</summary>
+      <div class="mgb">
+        <?php if (!$self): ?>
+        <form method="post" class="mrow"><?= $hid('role') ?><label>תפקיד<select name="role"><?php foreach (ROLES as $k => $v) echo '<option value="' . $k . '"' . ($x['role'] === $k ? ' selected' : '') . '>' . e($short($v)) . '</option>'; ?></select></label><button class="sec">עדכון תפקיד</button></form>
+        <form method="post" class="mrow"><?= $hid('mfa') ?>
+          <label>שיטת אימות<select name="method"><option value="app"<?= $x['mfa_method'] === 'app' ? ' selected' : '' ?>>אפליקציה בטלפון</option><option value="email"<?= $x['mfa_method'] === 'email' ? ' selected' : '' ?>>קוד במייל</option></select></label>
+          <label>מייל לקוד<input type="email" name="mail" dir="ltr" placeholder="name@gmail.com" value="<?= e($x['mfa_email']) ?>"></label>
+          <button class="sec">עדכון אימות</button></form>
+        <?php if ($x['totp_enabled']): ?><form method="post" class="mrow"><?= $hid('reset2fa') ?><span class="mu hint">מאפס את האימות; בכניסה הבאה תוגדר שיטה מחדש.</span><button class="sec">איפוס אימות</button></form><?php endif; ?>
+        <?php endif; ?>
+        <form method="post" class="mrow"><?= $hid('reset') ?><label>סיסמה חדשה<input type="password" name="pw" autocomplete="new-password" placeholder="10+ תווים, אותיות וספרות"></label><button class="sec">איפוס סיסמה</button></form>
+        <?php if (!$self): ?><form method="post" class="mrow end"><?= $hid('toggle') ?><span class="mu hint"><?= $x['active'] ? 'השבתה מנתקת אותה מיד מכל המכשירים.' : 'הפעלה מחזירה לה אפשרות כניסה.' ?></span><button class="<?= $x['active'] ? 'dg' : '' ?>"><?= $x['active'] ? 'השבתת משתמשת' : 'הפעלת משתמשת' ?></button></form>
+        <?php else: ?><p class="mu hint">זה החשבון שלך: תפקיד, אימות והשבתה לא ניתנים לשינוי כאן, כדי שהגישה שלך לא תיחסם בטעות.</p><?php endif; ?>
+      </div>
+    </details>
+  </div>
 <?php endforeach; ?>
-</table></div>
-<form method="post" class="card" autocomplete="off">
+</div>
+<?php sec_open('new', 'הוספת משתמשת', 'שם, סיסמה ושיטת אימות', '＋', ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'create' && $err) ? ['new'] : []); ?>
+<form method="post" autocomplete="off">
   <?= csrf_field() ?><input type="hidden" name="act" value="create">
-  <h2>הוספת משתמשת</h2>
   <div class="fg">
     <label>שם תצוגה<input name="name" required></label>
-    <label>שם משתמש (אנגלית)<input name="username" required></label>
+    <label>שם משתמש (אנגלית)<input name="username" required dir="ltr"></label>
     <label>סיסמה (10+ תווים, אותיות וספרות)<input name="pw" type="password" required autocomplete="new-password"></label>
-    <label>תפקיד<select name="role"><?php foreach (ROLES as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
+    <label>תפקיד<select name="role"><?php foreach (ROLES as $k => $v) echo '<option value="' . $k . '">' . e($short($v)) . '</option>'; ?></select></label>
     <label>שיטת אימות בכניסה<select name="method"><option value="app">אפליקציית אימות בטלפון</option><option value="email">קוד שנשלח למייל</option></select></label>
-    <label>כתובת מייל (לאימות במייל)<input type="email" name="mail" dir="ltr" placeholder="name@gmail.com"></label>
+    <label>כתובת מייל (רק לאימות במייל)<input type="email" name="mail" dir="ltr" placeholder="name@gmail.com"></label>
   </div>
-  <p><button>הוספה</button></p>
+  <p><button>הוספת משתמשת</button></p>
 </form>
+<?php sec_close(); ?>
+<?php $roleDesc = ['admin' => 'הכול: משתמשים, ייבוא, יומן פעולות, גיבויים, בדיקת מערכת ומחיקות.', 'secretary' => 'עריכת תלמידות, מסמכים ומספרי זהות, וניהול הגבייה. בלי ניהול משתמשים והגדרות מערכת.', 'finance' => 'עבודה בגבייה. בתלמידות רק צפייה, בלי עריכה, מסמכים או מספרי זהות.']; ?>
+<div class="card"><h2>מה כל תפקיד יכול</h2><ul class="legend"><?php foreach (ROLES as $k => $v) echo '<li><span class="role r-' . e($k) . '">' . e($short($v)) . '</span> ' . e($roleDesc[$k] ?? '') . '</li>'; ?></ul></div>
 <?php page_foot();

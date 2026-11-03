@@ -111,3 +111,25 @@ input[type=file]{width:100%}.notef input,.notef textarea{width:100%}
 @media(max-width:640px){.calls{grid-template-columns:1fr}.seg{display:flex}.seg a{flex:1;text-align:center}}
 td.n{white-space:nowrap}
 .ver{text-align:center;color:var(--mu);font-size:12px;padding:0 0 22px}
+
+/* דף משתמשים */
+.ucards{align-items:start;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;margin-bottom:16px}
+.uc{background:#fff;border:1px solid var(--ln);border-radius:16px;padding:16px 18px;border-top:4px solid var(--gr);display:flex;flex-direction:column;gap:12px}
+.uc.off{border-top-color:#c9c2c7;background:#faf8f9}.uc.off .un,.uc.off .av{opacity:.65}
+.uh{display:flex;align-items:center;gap:12px}
+.av{flex:none;width:44px;height:44px;border-radius:50%;background:var(--ac);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800}
+.un{flex:1;min-width:0;display:flex;flex-direction:column}.un b{font-size:17px}
+.pill.me{background:var(--tint);color:var(--gd);font-weight:700}
+.st{padding:3px 12px;border-radius:99px;font-size:13px;font-weight:700}.st.on{background:#e6f1cf;color:var(--gd)}.st.off{background:#ece8ea;color:var(--mu)}
+.uf{display:grid;grid-template-columns:1fr;gap:8px;background:#faf8f5;border-radius:12px;padding:10px 12px}
+.uf>div{display:flex;align-items:center;gap:10px}.uf .mu{width:96px;flex:none}
+.role{padding:2px 12px;border-radius:99px;background:#ece8ea;font-weight:600;font-size:13px}.role.r-admin{background:var(--ac);color:#fff}
+.mg>summary{list-style:none;cursor:pointer;color:var(--ac2);font-weight:600;padding:6px 0}.mg>summary::-webkit-details-marker{display:none}
+.mg>summary::after{content:" ⌄";font-size:14px}.mg[open]>summary::after{content:" ⌃"}
+.mgb{display:flex;flex-direction:column;gap:12px;padding-top:6px;border-top:1px solid var(--ln)}
+.mrow{display:flex;flex-wrap:wrap;gap:8px;align-items:end;padding-bottom:12px;border-bottom:1px dashed var(--ln)}
+.mrow:last-child{border-bottom:0;padding-bottom:0}.mrow label{display:flex;flex-direction:column;font-size:12px;color:var(--mu);flex:1;min-width:150px}
+.mrow label input,.mrow label select{width:100%}.mrow .hint{flex:1;min-width:150px}.mrow.end{align-items:center}
+@media(max-width:640px){.ucards{grid-template-columns:1fr}}
+.uf>div{align-items:flex-start!important}.uf .v{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}.uf .sub2{font-size:12px}
+.legend{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}.legend .role{margin-left:8px}
