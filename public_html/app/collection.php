@@ -50,9 +50,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'create_a
   }
 }
 $q = trim((string)($_GET['q'] ?? '')); $f = (string)($_GET['f'] ?? 'all'); $mm = (string)($_GET['m'] ?? '');
+$view = ($_GET['v'] ?? '') === 'calls' ? 'calls' : 'table'; $kind = (string)($_GET['k'] ?? ''); $min = max(0, (float)str_replace(',', '', (string)($_GET['min'] ?? '')));
+$sorts = ['name' => 'לפי שם', 'bal' => 'יתרה (מהגבוהה)', 'late' => 'פיגור היום (מהגבוה)', 'behind' => 'חודשי פיגור (מהרב)']; $sort = (string)($_GET['s'] ?? ($view === 'calls' ? 'late' : 'name')); if (!isset($sorts[$sort])) $sort = 'name';
 $w = []; $a = [];
 if ($q !== '') { $w[] = '(f.name LIKE ? OR EXISTS (SELECT 1 FROM students s2 WHERE s2.family_id = f.id AND s2.name LIKE ?))'; $l = '%' . $q . '%'; array_push($a, $l, $l); }
 if ($mm !== '' && isset(PAY_METHODS[$mm])) { $w[] = 'f.method = ?'; $a[] = $mm; }
+if ($kind === 'parents') $w[] = "f.payer_kind IN ('parents','father','mother')"; elseif ($kind === 'org') $w[] = "f.payer_kind NOT IN ('parents','father','mother')";
 $sql = 'SELECT f.id, f.name, f.monthly, f.months, f.method, f.collect_day, f.discount_note, f.payer_kind, p.name payer, '
      . "(SELECT GROUP_CONCAT(CONCAT(s.name, ' (', s.grade, ')') ORDER BY s.name SEPARATOR ', ') FROM students s WHERE s.family_id = f.id) names "
      . 'FROM families f LEFT JOIN payers p ON p.id = f.payer_id ' . ($w ? 'WHERE ' . implode(' AND ', $w) : '') . ' ORDER BY f.name';
@@ -60,15 +63,27 @@ $st = db()->prepare($sql); $st->execute($a); $fams = $st->fetchAll();
 $data = collection_data(array_map(fn($r) => (int)$r['id'], $fams));
 if ($f === 'debt') $fams = array_values(array_filter($fams, fn($r) => $data[(int)$r['id']]['balance'] > 0.004));
 elseif ($f === 'clear') $fams = array_values(array_filter($fams, fn($r) => $data[(int)$r['id']]['balance'] <= 0.004));
+$arr = []; foreach ($fams as $r) $arr[(int)$r['id']] = collection_arrears($data[(int)$r['id']], $r['collect_day']);
+if ($f === 'late') $fams = array_values(array_filter($fams, fn($r) => $arr[(int)$r['id']]['late'] > 0.004));
+if ($min > 0) $fams = array_values(array_filter($fams, fn($r) => $data[(int)$r['id']]['balance'] >= $min));
+if ($sort !== 'name') usort($fams, function ($x, $y) use ($sort, $data, $arr) {
+  $ix = (int)$x['id']; $iy = (int)$y['id'];
+  $c = match ($sort) { 'bal' => $data[$iy]['balance'] <=> $data[$ix]['balance'], 'late' => $arr[$iy]['late'] <=> $arr[$ix]['late'], default => [$arr[$iy]['behind'], $arr[$iy]['late']] <=> [$arr[$ix]['behind'], $arr[$ix]['late']] };
+  return $c ?: strcmp((string)$x['name'], (string)$y['name']);
+});
+$contacts = family_contacts(array_map(fn($r) => (int)$r['id'], $fams));
+$late = ['n' => 0, 'sum' => 0.0]; foreach ($fams as $r) { $x = $arr[(int)$r['id']]; if ($x['late'] > 0.004) { $late['n']++; $late['sum'] += $x['late']; } }
 $T = ['tuition' => 0, 'charges' => 0, 'paid' => 0, 'balance' => 0];
 foreach ($fams as $r) foreach ($T as $k => $_) $T[$k] += $data[(int)$r['id']][$k];
 if (isset($_GET['export'])) {
   audit('collection_export', 'family', '', count($fams) . ' שורות');
   header('Content-Type: text/csv; charset=utf-8'); header('Content-Disposition: attachment; filename="collection-' . date('Y-m-d') . '.csv"');
   $o = fopen('php://output', 'w'); fwrite($o, "\xEF\xBB\xBF");
-  fputcsv($o, ['משפחה', 'תלמידות', 'תעריף חודשי', 'חודשים', 'שכר לימוד', 'חיובים נוספים', 'שולם', 'יתרה', 'צורת תשלום', 'יום גבייה', 'גורם משלם', 'הנחה'], ',', '"', '');
-  foreach ($fams as $r) { $d = $data[(int)$r['id']];
-    fputcsv($o, [csv_safe($r['name']), csv_safe((string)$r['names']), $r['monthly'], $r['months'], $d['tuition'], $d['charges'], $d['paid'], $d['balance'], method_label($r['method']), $r['collect_day'], csv_safe(payer_label($r)), csv_safe($r['discount_note'])], ',', '"', ''); }
+  fputcsv($o, ['משפחה', 'תלמידות', 'תעריף חודשי', 'חודשים', 'שכר לימוד', 'חיובים נוספים', 'שולם', 'יתרה', 'צורת תשלום', 'יום גבייה', 'גורם משלם', 'הנחה', 'חודשי פיגור', 'פיגור (₪)', 'יתרת שכר לימוד', 'יתרת חיובים נוספים', 'אבא', 'טלפון אבא', 'אמא', 'טלפון אמא'], ',', '"', '');
+  foreach ($fams as $r) { $d = $data[(int)$r['id']]; $ct = $contacts[(int)$r['id']] ?? [];
+    fputcsv($o, [csv_safe($r['name']), csv_safe((string)$r['names']), $r['monthly'], $r['months'], $d['tuition'], $d['charges'], $d['paid'], $d['balance'], method_label($r['method']), $r['collect_day'], csv_safe(payer_label($r)), csv_safe($r['discount_note']),
+      $arr[(int)$r['id']]['behind'], $arr[(int)$r['id']]['late'], round($d['tuition'] - ($d['paid'] - $d['cpaid']), 2), round($d['charges'] - $d['cpaid'], 2),
+      csv_safe($ct['f'][1] ?? ''), csv_safe($ct['f'][2] ?? ''), csv_safe($ct['m'][1] ?? ''), csv_safe($ct['m'][2] ?? '')], ',', '"', ''); }
   exit;
 }
 $payers = db()->query('SELECT p.id, p.name, (SELECT COUNT(*) FROM families WHERE payer_id = p.id) n FROM payers p ORDER BY p.name')->fetchAll();
@@ -81,30 +96,67 @@ page_head('גבייה');
   <div class="tile"><span class="mu">שכר לימוד</span><b><?= e(money($T['tuition'])) ?></b></div>
   <div class="tile"><span class="mu">חיובים נוספים</span><b><?= e(money($T['charges'])) ?></b></div>
   <div class="tile g"><span class="mu">שולם</span><b class="ok"><?= e(money($T['paid'])) ?></b></div>
-  <div class="tile p"><span class="mu">יתרה לגבייה</span><b class="er"><?= e(money($T['balance'])) ?></b></div>
+  <div class="tile w"><span class="mu">בפיגור נכון להיום (<?= (int)$late['n'] ?> תיקים)</span><b><?= e(money($late['sum'])) ?></b></div>
+  <div class="tile p"><span class="mu">יתרה לגבייה (כולל מה שעוד לא הגיע מועדו)</span><b class="er"><?= e(money($T['balance'])) ?></b></div>
+</div>
+<?php $qs = fn(array $o) => http_build_query(array_merge(['q' => $q, 'f' => $f, 'm' => $mm, 'k' => $kind, 'min' => $min ?: '', 's' => $sort, 'v' => $view], $o)); ?>
+<div class="seg" role="tablist">
+  <a href="collection.php?<?= e($qs(['v' => 'table'])) ?>" class="<?= $view === 'table' ? 'on' : '' ?>">☰ טבלה</a>
+  <a href="collection.php?<?= e($qs(['v' => 'calls', 's' => $view === 'calls' ? $sort : 'late', 'f' => $f === 'all' ? 'late' : $f])) ?>" class="<?= $view === 'calls' ? 'on' : '' ?>">☎ רשימת התקשרות</a>
 </div>
 <form class="bar" method="get">
+  <input type="hidden" name="v" value="<?= e($view) ?>">
   <label>חיפוש<input name="q" value="<?= e($q) ?>" placeholder="שם משפחה / תלמידה"></label>
-  <label>מצב<select name="f"><option value="all">הכל</option><option value="debt"<?= $f === 'debt' ? ' selected' : '' ?>>עם יתרה</option><option value="clear"<?= $f === 'clear' ? ' selected' : '' ?>>ללא יתרה</option></select></label>
+  <label>מצב<select name="f"><option value="all">הכל</option><option value="late"<?= $f === 'late' ? ' selected' : '' ?>>בפיגור היום</option><option value="debt"<?= $f === 'debt' ? ' selected' : '' ?>>עם יתרה</option><option value="clear"<?= $f === 'clear' ? ' selected' : '' ?>>ללא יתרה</option></select></label>
+  <label>מיון<select name="s"><?php foreach ($sorts as $k => $v) echo '<option value="' . $k . '"' . ($sort === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
+  <label>יתרה מעל (₪)<input name="min" inputmode="numeric" value="<?= $min ? e((string)$min) : '' ?>" placeholder="0" size="6"></label>
+  <label>גורם משלם<select name="k"><option value="">הכל</option><option value="parents"<?= $kind === 'parents' ? ' selected' : '' ?>>הורים</option><option value="org"<?= $kind === 'org' ? ' selected' : '' ?>>עמותה / גורם חיצוני</option></select></label>
   <label>צורת תשלום<select name="m"><option value="">הכל</option><?php foreach (PAY_METHODS as $k => $v) echo '<option value="' . $k . '"' . ($mm === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
   <button>סינון</button>
-  <a class="btn sec" href="collection.php?<?= e(http_build_query(['q' => $q, 'f' => $f, 'm' => $mm, 'export' => 1])) ?>">ייצוא לאקסל (CSV)</a>
+  <a class="btn sec" href="collection.php?<?= e(http_build_query(['q' => $q, 'f' => $f, 'm' => $mm, 'k' => $kind, 'min' => $min ?: '', 's' => $sort, 'export' => 1])) ?>">ייצוא לאקסל (CSV)</a>
   <?php if ($u['role'] === 'admin') echo '<a class="btn sec" href="collection_import.php">ייבוא תיקי גבייה</a><a class="btn sec" href="payments_import.php">ייבוא תשלומים</a>'; ?>
 </form>
+<?php
+$phoneIco = '<svg class="ni" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>';
+$badge = function (array $x): string {
+  if ($x['late'] <= 0.004) return '<span class="late ok0">✓ מעודכן</span>';
+  $t = ($x['behind'] ? $x['behind'] . ' ' . ($x['behind'] === 1 ? 'חודש' : 'חודשים') . ' · ' : '') . money($x['late']);
+  return '<span class="late ' . ($x['behind'] >= 2 ? 'hi' : 'lo') . '" title="' . e('שכר לימוד חסר: ' . money($x['gap']) . ($x['cgap'] ? ' · חיובים נוספים שלא שולמו: ' . money($x['cgap']) : '')) . '">' . e($t) . '</span>';
+};
+?>
+<?php if ($view === 'calls'): ?>
+<div class="calls">
+<?php foreach ($fams as $r): $d = $data[(int)$r['id']]; $x = $arr[(int)$r['id']]; $ct = $contacts[(int)$r['id']] ?? []; ?>
+  <div class="cc<?= $x['late'] > 0.004 ? ($x['behind'] >= 2 ? ' hi' : ' lo') : '' ?>">
+    <div class="ch"><a class="nm" href="family.php?id=<?= (int)$r['id'] ?>"><?= e($r['name']) ?></a><?= $badge($x) ?></div>
+    <div class="mu"><?= e((string)$r['names']) ?></div>
+    <div class="cn"><span class="mu">יתרה כוללת</span> <b class="<?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money($d['balance'])) ?></b><?php if ($r['payer_kind'] !== 'parents') echo ' <span class="pill">' . e(payer_label($r)) . '</span>'; ?></div>
+    <div class="mcs"><?= month_cells($d) ?></div>
+    <div class="tels">
+      <?php foreach (['f', 'm'] as $k) if (isset($ct[$k])): [$lab, $nm, $ph] = $ct[$k]; ?>
+        <a class="tel" href="<?= e(tel_href($ph)) ?>"><?= $phoneIco ?><span><b><?= e($lab) ?></b><?= $nm !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e($ph) ?></bdi></a>
+      <?php endif; if (!$ct) echo '<span class="mu">אין מספר טלפון של ההורים בכרטיס התלמידה.</span>'; ?>
+    </div>
+  </div>
+<?php endforeach; if (!$fams) echo '<p class="mu">אין תיקים להצגה.</p>'; ?>
+</div>
+<?php else: ?>
 <div class="card sc"><table>
-<tr><th>משפחה</th><th>תלמידות</th><th>תעריף</th><th>חיובים</th><th>שולם</th><th>יתרה</th><th>חודשים</th><th>אמצעי</th><th>יום</th></tr>
+<tr><th>משפחה</th><th>תלמידות</th><th>תעריף</th><th>חיובים</th><th>שולם</th><th>יתרה</th><th>פיגור היום</th><th>חודשים</th><th>אמצעי</th><th>יום</th></tr>
 <?php foreach ($fams as $r): $d = $data[(int)$r['id']]; ?>
 <tr>
   <td><a href="family.php?id=<?= (int)$r['id'] ?>"><?= e($r['name']) ?></a><?php $pl = payer_label($r); if ($r['payer_kind'] !== 'parents') echo ' <span class="pill">' . e($pl) . '</span>'; ?></td>
   <td class="mu"><?= e((string)$r['names']) ?></td>
-  <td><?= e(money($r['monthly'])) ?> × <?= (int)$r['months'] ?></td>
-  <td><?= e(money($d['charges'])) ?></td><td><?= e(money($d['paid'])) ?></td>
-  <td class="<?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money($d['balance'])) ?></td>
+  <td class="n"><?= e(money($r['monthly'])) ?> × <?= (int)$r['months'] ?></td>
+  <td class="n"><?= e(money($d['charges'])) ?></td><td class="n"><?= e(money($d['paid'])) ?></td>
+  <td class="n <?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money($d['balance'])) ?></td>
+  <td><?= $badge($arr[(int)$r['id']]) ?></td>
   <td class="mcs"><?= month_cells($d) ?></td>
   <td><?= e(method_label($r['method'])) ?></td><td><?= e((string)($r['collect_day'] ?? '')) ?></td>
 </tr>
-<?php endforeach; if (!$fams) echo '<tr><td colspan="9" class="mu">אין תיקים להצגה.</td></tr>'; ?>
+<?php endforeach; if (!$fams) echo '<tr><td colspan="10" class="mu">אין תיקים להצגה.</td></tr>'; ?>
 </table></div>
+<?php endif; ?>
 <?php sec_open('payers', 'גורמים משלמים (עמותות)', count($payers) . ' גורמים', '◎'); ?>
   <p><?php foreach ($payers as $p) echo '<a class="btn sec" href="payer.php?id=' . (int)$p['id'] . '">' . e($p['name']) . ' (' . (int)$p['n'] . ' תיקים)</a> '; if (!$payers) echo '<span class="mu">עדיין לא הוגדר גורם משלם.</span> '; ?>
   <a class="btn" href="payer.php?new=1">+ גורם משלם חדש</a></p>

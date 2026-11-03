@@ -36,7 +36,7 @@ function collection_data(?array $ids = null): array {
   foreach ($st->fetchAll() as $f) {
     $n = max(1, min(12, (int)$f['months']));
     $out[(int)$f['id']] = ['monthly' => (float)$f['monthly'], 'months' => $n, 'tuition' => round((float)$f['monthly'] * $n, 2),
-      'charges' => 0.0, 'paid' => 0.0, 'balance' => 0.0, 'assigned' => array_fill(1, $n, 0.0), 'pool' => 0.0, 'cov' => [], 'status' => []];
+      'charges' => 0.0, 'paid' => 0.0, 'cpaid' => 0.0, 'balance' => 0.0, 'assigned' => array_fill(1, $n, 0.0), 'pool' => 0.0, 'cov' => [], 'status' => []];
   }
   if (!$out) return [];
   $in = implode(',', array_fill(0, count($out), '?')); $keys = array_keys($out);
@@ -46,6 +46,7 @@ function collection_data(?array $ids = null): array {
   foreach ($st->fetchAll() as $r) {
     $o =& $out[(int)$r['family_id']]; $s = (float)$r['s'];
     $o['paid'] += $s;
+    if ($r['charge_id'] !== null) $o['cpaid'] += $s;
     if ($r['charge_id'] === null) {
       $m = $r['for_month'] === null ? 0 : (int)$r['for_month'];
       if ($m >= 1 && $m <= $o['months']) $o['assigned'][$m] += $s; else $o['pool'] += $s;
@@ -61,12 +62,46 @@ function collection_data(?array $ids = null): array {
       $o['cov'][$m] = round($c, 2);
       $o['status'][$m] = $o['monthly'] <= 0 ? 'na' : ($c >= $o['monthly'] - 0.004 ? 'paid' : ($c > 0.004 ? 'part' : 'none'));
     }
-    $o['paid'] = round($o['paid'], 2);
+    $o['paid'] = round($o['paid'], 2); $o['cpaid'] = round($o['cpaid'], 2);
     $o['balance'] = round($o['tuition'] + $o['charges'] - $o['paid'], 2);
   }
   unset($o);
   return $out;
 }
+/** מספר החודש הנוכחי בשנת הלימודים (ספטמבר=1 … אוגוסט=12). */
+function school_month_now(?int $ts = null): int { return (((int)date('n', $ts ?? time()) - 9 + 12) % 12) + 1; }
+/**
+ * פיגור נכון להיום: חודש נחשב "לתשלום" מתחילת החודש עד יום הגבייה שלו (ברירת מחדל 10) – החודש הנוכחי נספר רק אחרי היום הזה.
+ * מחזיר: due (חודשים לתשלום עד היום), behind (מהם לא שולמו במלואם), gap (₪ חסרים בשכר לימוד לחודשים אלה), cgap (חיובים נוספים שלא שולמו), late (₪ סה"כ).
+ */
+function collection_arrears(array $s, $collectDay = null, ?int $ts = null): array {
+  $ts = $ts ?? time(); $cd = (int)$collectDay; if ($cd < 1 || $cd > 28) $cd = 10;
+  $due = school_month_now($ts) - 1 + ((int)date('j', $ts) >= $cd ? 1 : 0);
+  $due = max(0, min($due, (int)$s['months']));
+  $behind = 0; $gap = 0.0;
+  for ($m = 1; $m <= $due; $m++) {
+    if (($s['status'][$m] ?? 'na') === 'na') continue;
+    $miss = $s['monthly'] - (float)$s['cov'][$m];
+    if ($miss > 0.004) { $behind++; $gap += $miss; }
+  }
+  $cgap = max(0.0, round((float)$s['charges'] - (float)$s['cpaid'], 2));
+  return ['due' => $due, 'behind' => $behind, 'gap' => round($gap, 2), 'cgap' => $cgap, 'late' => round($gap + $cgap, 2)];
+}
+/** אנשי קשר לתיקים: [family_id => ['f' => ['אבא','שם','טלפון'], 'm' => ['אמא',...]]] – הראשון שמולא מבין האחיות. */
+function family_contacts(array $ids): array {
+  if (!$ids) return [];
+  $st = db()->prepare('SELECT family_id, f_name, f_phone, m_name, m_phone FROM students WHERE family_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY id');
+  $st->execute(array_map('intval', $ids)); $o = [];
+  foreach ($st->fetchAll() as $r) {
+    $f = (int)$r['family_id'];
+    foreach (['f' => 'אבא', 'm' => 'אמא'] as $k => $lab) {
+      if (isset($o[$f][$k]) || trim((string)$r[$k . '_phone']) === '') continue;
+      $o[$f][$k] = [$lab, trim((string)$r[$k . '_name']), trim((string)$r[$k . '_phone'])];
+    }
+  }
+  return $o;
+}
+function tel_href(string $p): string { return 'tel:' . preg_replace('/[^0-9+]/', '', $p); }
 function month_cells(array $s, bool $big = false): string {
   $h = '';
   foreach ($s['status'] as $m => $x) {
