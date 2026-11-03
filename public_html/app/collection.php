@@ -142,21 +142,37 @@ $badge = function (array $x): string {
 <?php endforeach; if (!$fams) echo '<p class="mu">אין תיקים להצגה.</p>'; ?>
 </div>
 <?php else: ?>
-<div class="sc"><table>
-<tr><th>משפחה</th><th>תלמידות</th><th>תעריף</th><th>חיובים</th><th>שולם</th><th>יתרה</th><th>פיגור היום</th><th>חודשים</th><th>אמצעי</th><th>יום</th></tr>
-<?php foreach ($fams as $r): $d = $data[(int)$r['id']]; ?>
-<tr>
-  <td><a href="family.php?id=<?= (int)$r['id'] ?>"><?= e($r['name']) ?></a><?php $pl = payer_label($r); if ($r['payer_kind'] !== 'parents') echo ' <span class="pill">' . e($pl) . '</span>'; ?></td>
-  <td class="mu"><?= e((string)$r['names']) ?></td>
-  <td class="n"><?= e(money($r['monthly'])) ?> × <?= (int)$r['months'] ?></td>
-  <td class="n"><?= e(money($d['charges'])) ?></td><td class="n"><?= e(money($d['paid'])) ?></td>
-  <td class="n <?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money($d['balance'])) ?></td>
-  <td><?= $badge($arr[(int)$r['id']]) ?></td>
-  <td class="mcs"><?= month_cells($d) ?></td>
-  <td><?= e(method_label($r['method'])) ?></td><td><?= e((string)($r['collect_day'] ?? '')) ?></td>
-</tr>
-<?php endforeach; if (!$fams) echo '<tr><td colspan="10" class="mu">אין תיקים להצגה.</td></tr>'; ?>
-</table></div>
+<div class="ut col">
+  <div class="ur uth" aria-hidden="true"><span>משפחה</span><span>תלמידות</span><span>יתרה</span><span>פיגור היום</span><span>חודשים</span><span></span></div>
+<?php foreach ($fams as $r): $d = $data[(int)$r['id']]; $ct = $contacts[(int)$r['id']] ?? []; ?>
+  <details class="uw">
+    <summary class="ur">
+      <span class="c nm"><b><?= e($r['name']) ?></b><?php if ($r['payer_kind'] !== 'parents') echo ' <span class="pill">' . e(payer_label($r)) . '</span>'; ?></span>
+      <span class="c mu" data-l="תלמידות"><?= e((string)$r['names']) ?></span>
+      <span class="c bal <?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>" data-l="יתרה"><?= e(money($d['balance'])) ?></span>
+      <span class="c stt" data-l="פיגור"><?= $badge($arr[(int)$r['id']]) ?></span>
+      <span class="c mcs" data-l="חודשים"><?= month_cells($d) ?></span>
+      <span class="chev" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="mgb dt">
+      <div class="mbs full"><?= month_cells($d, true) ?></div>
+      <dl class="kv">
+        <div><dt>תעריף</dt><dd><?= e(money($r['monthly'])) ?> × <?= (int)$r['months'] ?> חודשים = <?= e(money($d['tuition'])) ?></dd></div>
+        <div><dt>חיובים נוספים</dt><dd><?= e(money($d['charges'])) ?></dd></div>
+        <div><dt>שולם</dt><dd class="ok"><?= e(money($d['paid'])) ?></dd></div>
+        <div><dt>צורת תשלום</dt><dd><?= $r['method'] !== '' ? e(method_label($r['method'])) : '<span class="mu">—</span>' ?><?= $r['collect_day'] ? ' · יום ' . (int)$r['collect_day'] : '' ?></dd></div>
+        <?php if ($r['discount_note'] !== null && $r['discount_note'] !== ''): ?><div><dt>הנחה</dt><dd><?= e($r['discount_note']) ?></dd></div><?php endif; ?>
+      </dl>
+      <div class="tels">
+        <?php foreach (['f', 'm'] as $k) if (isset($ct[$k])): [$lab, $nm, $ph] = $ct[$k]; ?>
+          <a class="tel" href="<?= e(tel_href($ph)) ?>"><?= $phoneIco ?><span><b><?= e($lab) ?></b><?= $nm !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e($ph) ?></bdi></a>
+        <?php endif; ?>
+      </div>
+      <div class="acts"><a class="btn" href="family.php?id=<?= (int)$r['id'] ?>">לתיק הגבייה</a><a class="btn sec" href="family.php?id=<?= (int)$r['id'] ?>&open=pay#s-pay">רישום תשלום</a></div>
+    </div>
+  </details>
+<?php endforeach; if (!$fams) echo '<p class="mu" style="padding:14px 18px">אין תיקים להצגה.</p>'; ?>
+</div>
 <?php endif; ?>
 <?php sec_close(); ?>
 <?php sec_open('payers', 'גורמים משלמים (עמותות)', count($payers) . ' גורמים', '◎'); ?>

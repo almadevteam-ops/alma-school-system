@@ -140,3 +140,26 @@ td.n{white-space:nowrap}
   .ur .c[data-l="מצב"]{grid-column:2;grid-row:1}.ur .chev{grid-column:3;grid-row:1}.ur .nm{grid-column:1;grid-row:1}
   .mgb{grid-template-columns:1fr}
 }
+
+/* טבלאות עם שורות מתרחבות: תלמידות וגבייה */
+.bd .ut{border:0;border-radius:0;margin:0;overflow:visible}
+.ut.stu .ur{grid-template-columns:36px 1.6fr .8fr 1fr 1.1fr 90px 24px}
+.ut.col .ur{grid-template-columns:1.3fr 1.6fr 110px 150px 1.3fr 24px}
+.ut .idx{color:var(--mu)}
+.ut .c.nm{min-width:0}.ut .c.mu{font-size:13px}.ut .c.bal{font-weight:800;white-space:nowrap}
+.mgb.dt{display:flex;flex-direction:column;gap:14px;align-items:stretch}
+.kv{margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 24px}
+.kv div{display:flex;flex-direction:column;gap:2px}.kv dt{font-size:12px;color:var(--mu)}.kv dd{margin:0;font-weight:500}
+.mgb.dt .tels{flex-direction:row;flex-wrap:wrap}.mgb.dt .tel{flex:1;min-width:230px}
+.mgb.dt .acts{display:flex;gap:8px;flex-wrap:wrap}
+.mbs.full{display:flex;gap:6px;flex-wrap:wrap}
+@media(max-width:760px){
+  .ut.stu .ur,.ut.col .ur{grid-template-columns:1fr auto 24px;gap:6px 10px}
+  .ut.stu .ur .idx{display:none}
+  .ut.stu .ur .c.nm,.ut.col .ur .c.nm{grid-column:1;grid-row:1}
+  .ut.stu .ur .c.stt{grid-column:2;grid-row:1}.ut.col .ur .c.stt{grid-column:1/-1;grid-row:auto}
+  .ut.stu .ur .chev,.ut.col .ur .chev{grid-column:3;grid-row:1}
+  .ut.stu .ur .c[data-l],.ut.col .ur .c[data-l]{grid-column:1/-1;font-size:13px}
+  .ut.stu .ur .c[data-l]::before,.ut.col .ur .c[data-l]:not(.stt):not(.mcs)::before{content:attr(data-l) ": ";color:var(--mu)}
+  .ut.col .ur .c.stt::before{content:none}
+}
