@@ -188,7 +188,7 @@ function page_head(string $title, bool $nav = true): void {
     foreach (['students.php' => 'תלמידות', 'collection.php' => 'גבייה', 'security.php' => 'אבטחה'] as $f => $l)
       echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . ' title="' . e($l) . '">' . $ic($icons[$f]) . '<span>' . e($l) . '</span></a>';
     if ($u['role'] === 'admin') {
-      $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'backups.php' => 'גיבויים', 'health.php' => 'בדיקת מערכת'];
+      $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'backups.php' => 'גיבויים', 'release_notes.php' => 'מה חדש', 'health.php' => 'בדיקת מערכת'];
       echo '<details class="menu' . (isset($adm[$on]) ? ' on' : '') . '"><summary title="ניהול">' . $ic($icons['admin']) . '<span>ניהול</span></summary><div class="dd">';
       foreach ($adm as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';
       echo '</div></details>';
@@ -208,7 +208,7 @@ function app_version(): string {
   $f = PRIV . '/VERSION'; $v = is_file($f) ? trim((string)file_get_contents($f)) : '';
   return preg_match('/^\d+\.\d+\.\d+/', $v, $m) ? $m[0] : '';
 }
-function page_foot(): void { $v = app_version(); echo '</main>' . ($v !== '' && user() ? '<footer class="ver">גרסה <bdi dir="ltr">' . e($v) . '</bdi></footer>' : '') . '</body></html>'; }
+function page_foot(): void { $v = app_version(); echo '</main>' . ($v !== '' && user() ? '<footer class="ver">' . (($u0 = user()) && $u0['role'] === 'admin' ? '<a href="release_notes.php" title="מה חדש">גרסה <bdi dir="ltr">' . e($v) . '</bdi></a>' : 'גרסה <bdi dir="ltr">' . e($v) . '</bdi>') . '</footer>' : '') . '</body></html>'; }
 
 const GRADES = ['ז', 'ח', 'ט', 'י', 'יא', 'יב'];
 const STATUS = ['active' => 'פעילה', 'left' => 'עזבה', 'pending' => 'ממתינה לאישור'];

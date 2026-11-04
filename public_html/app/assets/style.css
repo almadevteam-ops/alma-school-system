@@ -165,3 +165,10 @@ td.n{white-space:nowrap}
 }
 .btn.hot{border-color:var(--ac);color:var(--ac);font-weight:700}
 .emp{padding:14px 18px;margin:0}
+
+/* הערות גרסה */
+.rn .fsec>summary bdi{font-size:18px}
+.rn h3.tg{display:inline-block;margin:14px 0 6px;padding:2px 12px;border-radius:99px;font-size:13px;font-weight:700;background:#ece8ea}
+.rn h3.tg-new{background:#e6f1cf;color:var(--gd)}.rn h3.tg-imp{background:#e3ecf7;color:#1f4e8c}.rn h3.tg-fix{background:#fdf0c9;color:#7a5b00}.rn h3.tg-sec{background:#f9dcdc;color:var(--er)}
+.rn ul{margin:0 0 4px;padding:0 20px 0 0}.rn li{margin:5px 0;line-height:1.6}.rn code{background:#f1edf0;padding:1px 6px;border-radius:6px;font-size:13px}
+.rnintro{max-width:880px}.ver a{color:var(--mu)}
