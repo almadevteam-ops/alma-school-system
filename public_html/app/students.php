@@ -20,12 +20,13 @@ function mask(string $v): string { return $v === '' ? '' : str_repeat('•', max
 page_head('תלמידות');
 ?>
 <h1>תלמידות <span class="mu">(<?= $total ?> תוצאות)</span></h1>
-<form class="bar" method="get">
+<form class="bar auto" method="get">
   <label>חיפוש<input name="q" value="<?= e($q) ?>" placeholder="שם / ת״ז / טלפון"></label>
   <label>כיתה<select name="g"><option value="">הכל</option><?php foreach (GRADES as $x) echo '<option' . ($g === $x ? ' selected' : '') . '>' . e($x) . '</option>'; ?></select></label>
   <label>עיר<input name="c" value="<?= e($c) ?>" placeholder="למשל חיפה"></label>
   <label>סטטוס<select name="s"><option value="">הכל</option><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . ($s === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
-  <button>סינון</button>
+  <button>OK</button>
+  <a class="btn sec<?= ($q !== '' || $g !== '' || $c !== '' || $s !== 'active') ? ' hot' : '' ?>" href="students.php" title="איפוס כל הסינונים">↺ איפוס</a>
   <?php if (can_edit()) echo '<a class="btn sec" href="student.php">+ תלמידה חדשה</a>'; ?>
 </form>
 <?php sec_open('list', 'רשימת התלמידות', $total . ' תוצאות', '☺', ['list']); ?>
