@@ -163,3 +163,5 @@ td.n{white-space:nowrap}
   .ut.stu .ur .c[data-l]::before,.ut.col .ur .c[data-l]:not(.stt):not(.mcs)::before{content:attr(data-l) ": ";color:var(--mu)}
   .ut.col .ur .c.stt::before{content:none}
 }
+.btn.hot{border-color:var(--ac);color:var(--ac);font-weight:700}
+.emp{padding:14px 18px;margin:0}

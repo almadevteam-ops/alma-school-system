@@ -46,7 +46,7 @@ header_remove('X-Powered-By');
 header('X-Frame-Options: DENY');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
-header("Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
 header('Cache-Control: no-store');
 if (is_https()) header('Strict-Transport-Security: max-age=15552000');
@@ -172,7 +172,7 @@ function audit(string $action, string $entity = '', string $id = '', string $det
 function asset_v(string $f): string { $p = ($_SERVER['DOCUMENT_ROOT'] ?? '') . '/app/assets/' . $f; return is_file($p) ? (string)filemtime($p) : '1'; }
 function page_head(string $title, bool $nav = true): void {
   echo '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-     . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"></head><body>';
+     . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"><script src="/app/assets/app.js?v=' . asset_v('app.js') . '" defer></script></head><body>';
   if ($nav && ($u = user())) {
     $cur = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
     $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'payments_import.php' => 'collection.php'];

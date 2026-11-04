@@ -60,7 +60,7 @@ page_head('תלמידות');
       </div>
     </div>
   </details>
-<?php endforeach; if (!$rows) echo '<p class="mu" style="padding:14px 18px">אין תוצאות.</p>'; ?>
+<?php endforeach; if (!$rows) echo '<p class="mu emp">אין תוצאות.</p>'; ?>
 </div>
 <?php
 $pages = (int)ceil($total / $per);

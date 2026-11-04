@@ -104,7 +104,7 @@ page_head('גבייה');
   <a href="collection.php?<?= e($qs(['v' => 'table'])) ?>" class="<?= $view === 'table' ? 'on' : '' ?>">☰ טבלה</a>
   <a href="collection.php?<?= e($qs(['v' => 'calls', 's' => $view === 'calls' ? $sort : 'late', 'f' => $f === 'all' ? 'late' : $f])) ?>" class="<?= $view === 'calls' ? 'on' : '' ?>">☎ רשימת התקשרות</a>
 </div>
-<form class="bar" method="get">
+<form class="bar auto" method="get">
   <input type="hidden" name="v" value="<?= e($view) ?>">
   <label>חיפוש<input name="q" value="<?= e($q) ?>" placeholder="שם משפחה / תלמידה"></label>
   <label>מצב<select name="f"><option value="all">הכל</option><option value="late"<?= $f === 'late' ? ' selected' : '' ?>>בפיגור היום</option><option value="debt"<?= $f === 'debt' ? ' selected' : '' ?>>עם יתרה</option><option value="clear"<?= $f === 'clear' ? ' selected' : '' ?>>ללא יתרה</option></select></label>
@@ -112,7 +112,8 @@ page_head('גבייה');
   <label>יתרה מעל (₪)<input name="min" inputmode="numeric" value="<?= $min ? e((string)$min) : '' ?>" placeholder="0" size="6"></label>
   <label>גורם משלם<select name="k"><option value="">הכל</option><option value="parents"<?= $kind === 'parents' ? ' selected' : '' ?>>הורים</option><option value="org"<?= $kind === 'org' ? ' selected' : '' ?>>עמותה / גורם חיצוני</option></select></label>
   <label>צורת תשלום<select name="m"><option value="">הכל</option><?php foreach (PAY_METHODS as $k => $v) echo '<option value="' . $k . '"' . ($mm === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
-  <button>סינון</button>
+  <button>OK</button>
+  <a class="btn sec<?= ($q !== '' || $f !== 'all' || $mm !== '' || $kind !== '' || $min > 0 || $sort !== ($view === 'calls' ? 'late' : 'name')) ? ' hot' : '' ?>" href="collection.php?v=<?= e($view) ?>" title="איפוס כל הסינונים והמיונים">↺ איפוס</a>
   <a class="btn sec" href="collection.php?<?= e(http_build_query(['q' => $q, 'f' => $f, 'm' => $mm, 'k' => $kind, 'min' => $min ?: '', 's' => $sort, 'export' => 1])) ?>">ייצוא לאקסל (CSV)</a>
   <?php if ($u['role'] === 'admin') echo '<a class="btn sec" href="collection_import.php">ייבוא תיקי גבייה</a><a class="btn sec" href="payments_import.php">ייבוא תשלומים</a>'; ?>
 </form>
@@ -171,7 +172,7 @@ $badge = function (array $x): string {
       <div class="acts"><a class="btn" href="family.php?id=<?= (int)$r['id'] ?>">לתיק הגבייה</a><a class="btn sec" href="family.php?id=<?= (int)$r['id'] ?>&open=pay#s-pay">רישום תשלום</a></div>
     </div>
   </details>
-<?php endforeach; if (!$fams) echo '<p class="mu" style="padding:14px 18px">אין תיקים להצגה.</p>'; ?>
+<?php endforeach; if (!$fams) echo '<p class="mu emp">אין תיקים להצגה.</p>'; ?>
 </div>
 <?php endif; ?>
 <?php sec_close(); ?>
