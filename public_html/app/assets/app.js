@@ -161,4 +161,30 @@
     var b = e.target.closest ? e.target.closest('[data-confirm]') : null;
     if (b && !window.confirm(b.getAttribute('data-confirm'))) e.preventDefault();
   });
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest ? e.target.closest('[data-copy]') : null;
+    if (!c) return;
+    var t = document.getElementById(c.getAttribute('data-copy'));
+    if (!t) return;
+    t.select();
+    try { document.execCommand('copy'); c.textContent = '✓ הועתק'; } catch (x) { /* ignore */ }
+  });
+  function regLinks() {
+    var w = document.getElementById('rwa'), m = document.getElementById('rma'), p = document.getElementById('rp'), r = document.getElementById('rm');
+    if (!w || !m) return;
+    function up() {
+      var n = (p.value || '').replace(/\D/g, '');
+      if (n.charAt(0) === '0') n = '972' + n.slice(1);
+      w.href = n ? 'https://wa.me/' + n + '?text=' + w.getAttribute('data-wa') : '#';
+      m.href = r.value ? 'mailto:' + encodeURIComponent(r.value) + '?subject=' + m.getAttribute('data-sub') + '&body=' + m.getAttribute('data-body') : '#';
+    }
+    p.addEventListener('input', up); r.addEventListener('input', up); up();
+  }
+  regLinks();
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-chk]') : null;
+    if (!b) return;
+    var on = b.getAttribute('data-on') === '1';
+    document.querySelectorAll('input.' + b.getAttribute('data-chk')).forEach(function (c) { c.checked = on; });
+  });
 })();

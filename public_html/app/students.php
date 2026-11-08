@@ -25,6 +25,8 @@ function mask(string $v): string { return $v === '' ? '' : str_repeat('•', max
 page_head('תלמידות');
 ?>
 <h1>תלמידות <span class="mu">(<?= $total ?> תוצאות)</span></h1>
+<?php if (can_edit()) { $pc = (int)db()->query("SELECT COUNT(*) FROM students WHERE status = 'pending' AND archived_at IS NULL")->fetchColumn();
+  echo '<p class="bar">' . ($pc ? '<a class="btn" href="registrations.php">📝 ' . $pc . ' הרשמות ממתינות לאישור</a>' : '<a class="btn sec" href="registrations.php">הרשמות חדשות</a>') . ' <a class="btn sec" href="moe_sync.php">סנכרון משרד החינוך</a></p>'; } ?>
 <form class="bar auto" method="get">
   <label>חיפוש<input name="q" value="<?= e($q) ?>" placeholder="שם / ת״ז / טלפון"></label>
   <label>כיתה<select name="g"><option value="">הכל</option><?php foreach (GRADES as $x) echo '<option' . ($g === $x ? ' selected' : '') . '>' . e($x) . '</option>'; ?></select></label>

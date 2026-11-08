@@ -16,6 +16,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pu = trim((string)($_POST['pay_url'] ?? ''));
     if ($pu !== '' && (!preg_match('~^https://[^\s]+$~i', $pu) || mb_strlen($pu) > 300)) $err = 'הקישור חייב להתחיל ב-https:// ולא להכיל רווחים.';
     else { setting_set('pay_url', $pu, $who); audit('settings', 'settings', '', 'קישור תשלום מאובטח עודכן'); $msg = 'נשמר.'; }
+  } elseif ($act === 'regcontact') {
+    $rp = trim((string)($_POST['reg_phone'] ?? '')); $re = trim((string)($_POST['reg_email'] ?? ''));
+    if ($rp !== '' && !preg_match('/^[0-9+\-\s]{7,20}$/', $rp)) $err = 'הטלפון לא תקין.';
+    elseif ($re !== '' && (!filter_var($re, FILTER_VALIDATE_EMAIL) || mb_strlen($re) > 150)) $err = 'המייל לא תקין.';
+    else { setting_set('reg_phone', $rp, $who); setting_set('reg_email', $re, $who); audit('settings', 'settings', '', 'פרטי קשר בעמוד ההרשמה'); $msg = 'נשמר.'; }
   } elseif ($act === 'sib_apply') {
     $n = sib_apply($who); audit('sib_apply', 'settings', '', "הנחת אחיות הוחלה על $n"); $msg = "הנחת אחיות הוחלה על $n תלמידות.";
   } elseif ($act === 'add' || $act === 'edit') {
@@ -55,6 +60,11 @@ page_head('הגדרות');
     <button>שמירה</button></form>
   <form method="post" class="acts"><?= csrf_field() ?><input type="hidden" name="act" value="sib_apply"><button class="sec" data-confirm="להחיל הנחת אחיות על כל התיקים עם יותר מתלמידה אחת? הנחות קיימות לא יוחלפו.">החלת הנחת אחיות עכשיו</button></form>
   <p class="mu">ההחלה מוסיפה את ההנחה לכל אחות החל מהשנייה בכל תיק (הבוגרת ביותר ללא הנחה), בלי לשנות הנחות שכבר הוגדרו. אפשר לשנות כל הנחה בכרטיס התלמידה.</p>
+</div>
+<div class="card">
+  <h2>פרטי המזכירות בעמוד ההרשמה</h2>
+  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="regcontact"><label>טלפון<input name="reg_phone" dir="ltr" inputmode="tel" value="<?= e(setting_get('reg_phone', '')) ?>"></label><label>מייל<input name="reg_email" type="email" dir="ltr" value="<?= e(setting_get('reg_email', '')) ?>"></label><button>שמירה</button></form>
+  <p class="mu">מוצגים להורים בדף התודה לאחר מילוי ההרשמה.</p>
 </div>
 <div class="card">
   <h2>קישור לתשלום מאובטח</h2>

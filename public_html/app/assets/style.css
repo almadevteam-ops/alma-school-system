@@ -217,3 +217,10 @@ input.locked{background:#efecee;color:#8a8389;cursor:not-allowed}
 .hero .mset label{color:#eadfe8}.hero>p.mu{color:#d9cdd6}.hero .mset select{min-width:150px}
 
 .sc tr.unm td{background:#fdf2f2}.fam{min-width:240px}
+
+/* הרשמה ציבורית */
+.reg { max-width: 760px; margin: 0 auto; padding: 18px 14px 40px; }
+.regc { background: #fff; border: 1px solid var(--line, #e3e6ea); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+.rlogo { display: block; margin: 0 auto 10px; max-height: 90px; width: auto; }
+.hp { position: absolute; width: 0; height: 0; opacity: 0; overflow: hidden; pointer-events: none; }
+tr.pendrow td { vertical-align: top; }
