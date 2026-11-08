@@ -37,10 +37,23 @@ function geo_match_street(int $cityId, string $street): ?string {
   foreach (geo_streets($cityId) as $s) if (geo_street_key((string)$s) === $k) $hit[] = (string)$s;
   return count($hit) === 1 ? $hit[0] : null;
 }
-/** שם עיר רשמי שמתאים לטקסט חופשי: התאמה מלאה, או עיר אחת בלבד שהשם שלה מתחיל בטקסט ("תל אביב" → "תל אביב - יפו"). */
+/** מפתח השוואה לשם ישוב: בלי פיסוק, בלי "מושב/קיבוץ" בהתחלה, בלי ה' הידיעה ("טירת הכרמל" = "טירת כרמל"), "קריית" = "קרית". */
+function geo_city_key(string $s): string {
+  $n = geo_norm($s); $n = preg_replace('/["\'.,()\-]/u', ' ', $n) ?? $n;
+  $w = array_values(array_filter(explode(' ', $n), fn($x) => $x !== ''));
+  if (count($w) > 1 && in_array($w[0], ['מושב', 'קיבוץ', 'קבוץ', 'ישוב', 'יישוב', 'כפר שיתופי'], true)) array_shift($w);
+  $w = array_map(function ($x) { if ($x === 'קריית') return 'קרית'; return (mb_strlen($x) > 3 && str_starts_with($x, 'ה')) ? mb_substr($x, 1) : $x; }, $w);
+  return implode(' ', $w);
+}
+/** שם ישוב רשמי שמתאים לטקסט חופשי: התאמה מלאה, התאמה לפי מפתח (בדיוק אחת), או ישוב אחד בלבד שהשם שלו מתחיל בטקסט ("תל אביב" → "תל אביב - יפו"). */
 function geo_match_city(string $city): ?string {
-  $n = geo_norm($city); if ($n === '') return null; $pre = [];
-  foreach (geo_cities() as $c) { $cn = geo_norm((string)$c); if ($cn === $n) return (string)$c; if (str_starts_with($cn, $n . ' ')) $pre[] = (string)$c; }
+  $n = geo_norm($city); if ($n === '') return null; $pre = []; $key = []; $k = geo_city_key($city);
+  foreach (geo_cities() as $c) {
+    $cn = geo_norm((string)$c); if ($cn === $n) return (string)$c;
+    if (geo_city_key((string)$c) === $k) $key[] = (string)$c;
+    if (str_starts_with($cn, $n . ' ')) $pre[] = (string)$c;
+  }
+  if (count($key) === 1) return $key[0];
   return count($pre) === 1 ? $pre[0] : null;
 }
 /** כתובות חריגות שמותר להקליד בשדה הרחוב בלי שיופיעו ברשימה (למשל "דירה בנשר"): לא נבדקות מול הספרייה ולא מסומנות כשגויות. */
