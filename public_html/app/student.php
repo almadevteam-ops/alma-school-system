@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   elseif ($dobIn !== '' && dob_iso($dobIn) === '') $err = 'תאריך הלידה לא תקין.';
   elseif ($d['dob'] !== '' && dob_iso($d['dob']) !== '' && $d['dob'] > date('Y-m-d')) $err = 'תאריך הלידה לא יכול להיות בעתיד.';
   else {
-    foreach (ID_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && (!preg_match('/^\d{9}$/', $d[$k]) || !valid_il_id($d[$k]))) { $err = $F[$k][0] . ': יש להקליד מספר זהות תקין.'; break; }
+    foreach (ID_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && (!preg_match('/^\d{9}$/', $d[$k]) || preg_match('/^0+$/', $d[$k]) || !valid_il_id($d[$k]))) { $err = $F[$k][0] . ': יש להקליד מספר זהות תקין.'; break; }
     if (!$err) foreach (PHONE_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && !phone_ok($d[$k])) { $err = $F[$k][0] . ': מספר טלפון לא תקין (לדוגמה 050-1234567 או 04-1234567).'; break; }
     if (!$err) $err = geo_check($d['city'], $d['addr'], $d['house_no'], $chg('city'), $chg('addr') || $chg('city'), $chg('house_no') || $chg('addr')) ?? '';
     if (!$err && $chg('hmo') && !in_array($d['hmo'], [...HMO_LIST, HMO_UNKNOWN], true)) $err = 'נא לבחור קופת חולים מהרשימה.';

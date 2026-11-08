@@ -47,30 +47,50 @@
     function st() { var ch = sel.value !== sel.getAttribute('data-orig'); box.hidden = !ch; inp.required = ch; }
     sel.addEventListener('change', st); st();
   });
-  // שדות מספר זהות: ספרות בלבד (עד 9), ובדיקת תקינות ברגע היציאה מהשדה (רק אם הוקלד ערך ושונה מהקיים)
+  // ולידציה מיידית בעזיבת שדה: הודעה אדומה מתחת לשדה, וחסימת שמירה עד לתיקון. נבדק רק ערך שהוקלד ושונה מהקיים.
   function idOk(v) {
-    v = v.replace(/\D/g, ''); if (v.length !== 9) return false;
+    v = v.replace(/\D/g, ''); if (v.length !== 9 || /^0+$/.test(v)) return false;
     var s = 0; for (var k = 0; k < 9; k++) { var n = +v[k] * (k % 2 + 1); s += n > 9 ? n - 9 : n; }
     return s % 10 === 0;
   }
-  var ID_MSG = 'יש להקליד מספר זהות תקין';
-  document.querySelectorAll('input[data-digits]').forEach(function (i) {
-    var msg = document.createElement('span'); msg.className = 'fe'; msg.hidden = true; msg.textContent = ID_MSG; i.parentNode.appendChild(msg);
+  function phoneOk(v) {
+    var d = v.replace(/\D/g, '');
+    if (d.indexOf('00972') === 0) d = '0' + d.slice(5); else if (d.indexOf('972') === 0 && d.length >= 11) d = '0' + d.slice(3);
+    else if (d.length === 9 && /^[57]/.test(d)) d = '0' + d; else if (d.length === 8 && /^[23489]/.test(d)) d = '0' + d;
+    return /^0(5\d{8}|7\d{8}|[2-489]\d{7})$/.test(d);
+  }
+  var bound = [];
+  function bind(el, test, required) {
+    if (!el || el._bound) return; el._bound = true;
+    var msg = document.createElement('span'); msg.className = 'fe'; msg.hidden = true; el.parentNode.appendChild(msg);
+    var init = el.defaultValue;
     function chk() {
-      var v = i.value, init = i.getAttribute('data-init') || '';
-      var bad = v !== '' && v !== init && !idOk(v);
-      i.setCustomValidity(bad ? ID_MSG : ''); i.classList.toggle('bad', bad); msg.hidden = !bad; return !bad;
+      var v = el.value.trim(), m = '';
+      if (el.disabled || el.readOnly && !required) m = '';
+      else if (required && v === '') m = 'זהו שדה חובה';
+      else if (v !== '' && v !== init) m = test ? test(v, el) : '';
+      el.setCustomValidity(m); el.classList.toggle('bad', !!m); msg.textContent = m; msg.hidden = !m; return !m;
     }
-    i._chk = chk;
-    i.addEventListener('input', function () { var v = i.value.replace(/\D/g, '').slice(0, 9); if (v !== i.value) i.value = v; if (i.classList.contains('bad')) chk(); });
-    i.addEventListener('blur', chk);
+    el._chk = chk; bound.push(el);
+    el.addEventListener('input', function () { if (el.classList.contains('bad')) chk(); });
+    el.addEventListener('change', chk); el.addEventListener('blur', chk);
+  }
+  window.almaBind = bind;
+  document.querySelectorAll('input[data-digits]').forEach(function (i) {
+    i.addEventListener('input', function () { var v = i.value.replace(/\D/g, '').slice(0, 9); if (v !== i.value) i.value = v; });
+    bind(i, function (v) { return idOk(v) ? '' : 'יש להקליד מספר זהות תקין'; });
   });
+  ['phone', 'f_phone', 'm_phone'].forEach(function (n) { bind(document.querySelector('input[name=' + n + ']'), function (v) { return phoneOk(v) ? '' : 'יש להקליד מספר טלפון תקין (למשל 050-1234567)'; }); });
+  bind(document.querySelector('input[name=email]'), function (v) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? '' : 'יש להקליד כתובת מייל תקינה'; });
+  bind(document.querySelector('input[name=house_no]'), function (v) { return /^\d{1,4}\s?[א-תA-Za-z]?(\s?[\/\-]\s?\d{1,4})?$/.test(v) ? '' : 'מספר בית לא תקין (למשל 12 או 12א)'; });
+  bind(document.querySelector('form.dirty input[name=name]'), null, true);
+  bind(document.querySelector('form.dirty select[name=grade]'), null, true);
   document.querySelectorAll('form').forEach(function (f) {
-    if (!f.querySelector('input[data-digits]')) return;
+    if (!f.querySelector('.dirty, input[data-digits], input[name=phone]') && !f.classList.contains('dirty')) return;
     f.addEventListener('submit', function (e) {
       var first = null;
-      f.querySelectorAll('input[data-digits]').forEach(function (i) { if (i._chk && !i._chk() && !first) first = i; });
-      if (first) { e.preventDefault(); first.focus(); first.reportValidity(); }
+      bound.forEach(function (el) { if (f.contains(el) && el._chk && !el._chk() && !first) first = el; });
+      if (first) { e.preventDefault(); first.focus(); if (first.reportValidity) first.reportValidity(); }
     });
   });
   // הערות: שמירה פעילה רק כשיש טקסט, ומונה תווים
@@ -121,6 +141,9 @@
       prevCity = v; last = null; loadStreets();
     });
     st.addEventListener('input', sync); st.addEventListener('change', sync);
+    var EXC = /^\s*(דירה|פנימיה|פנימייה)(\s|$)/;
+    bind(c, function (v) { return cityList === null || EXC.test(v) || inList(cityList, v) ? '' : 'יש לבחור עיר מהרשימה'; });
+    bind(st, function (v) { return cityList === null || EXC.test(v) || inList(streetList, v) ? '' : 'יש לבחור רחוב מהרשימה'; });
     sync();
   })();
   // כפתורים עם data-confirm: שואלים לפני מחיקה
