@@ -5,12 +5,12 @@ const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
 const IMPORT_MAX_ROWS = 2000;
 const IMPORT_FIELDS = [
   'name' => 'שם מלא', 'grade' => 'כיתה', 'cls' => 'מחזור/כיתה מפורטת', 'idn' => 'תעודת זהות', 'dob' => 'תאריך לידה',
-  'addr' => 'כתובת', 'city' => 'עיר', 'email' => 'אימייל', 'phone' => 'טלפון התלמידה',
+  'addr' => 'כתובת', 'house_no' => 'מספר בית', 'city' => 'עיר', 'email' => 'אימייל', 'phone' => 'טלפון התלמידה',
   'f_name' => 'שם האב', 'f_phone' => 'טלפון האב', 'f_id' => 'ת״ז האב',
   'm_name' => 'שם האם', 'm_phone' => 'טלפון האם', 'm_id' => 'ת״ז האם',
   'hmo' => 'קופת חולים', 'marital' => 'מצב הורים', 'status' => 'סטטוס', 'notes' => 'הערות',
 ];
-const IMPORT_MAXLEN = ['name' => 100, 'grade' => 4, 'cls' => 8, 'idn' => 20, 'dob' => 12, 'addr' => 200, 'city' => 80, 'email' => 150, 'phone' => 30,
+const IMPORT_MAXLEN = ['name' => 100, 'grade' => 4, 'cls' => 8, 'idn' => 20, 'dob' => 12, 'addr' => 200, 'house_no' => 12, 'city' => 80, 'email' => 150, 'phone' => 30,
   'f_name' => 80, 'f_phone' => 30, 'f_id' => 20, 'm_name' => 80, 'm_phone' => 30, 'm_id' => 20, 'hmo' => 30, 'marital' => 12, 'status' => 12, 'notes' => 2000];
 
 function import_norm_header(string $h): string {
@@ -26,6 +26,7 @@ function import_header_map(): array {
     'idn' => ['תז', 'ת ז', 'תעודת זהות', 'מספר זהות', 'זהות', 'id', 'idn'],
     'dob' => ['תאריך לידה', 'ת לידה', 'dob', 'birth'],
     'addr' => ['כתובת', 'רחוב', 'address', 'addr'],
+    'house_no' => ['מספר בית', 'מס בית', 'בית', 'מספר', 'house', 'house no'],
     'city' => ['עיר', 'יישוב', 'ישוב', 'city'],
     'email' => ['אימייל', 'מייל', 'דואל', 'email', 'mail'],
     'phone' => ['טלפון', 'טלפון התלמידה', 'נייד', 'נייד התלמידה', 'phone'],
@@ -108,6 +109,8 @@ function import_parse(string $raw, array $existing): array {
     foreach (IMPORT_MAXLEN as $k => $mx) if (mb_strlen($d[$k]) > $mx) $errs[] = IMPORT_FIELDS[$k] . ' ארוך מדי';
     foreach (['phone', 'f_phone', 'm_phone'] as $k) if ($d[$k] !== '') { $d[$k] = norm_phone($d[$k]); if (!phone_ok($d[$k])) $warns[] = IMPORT_FIELDS[$k] . ' לא נראה כמספר תקין'; }
     $d['hmo'] = hmo_norm($d['hmo']);
+    if ($d['house_no'] === '' && $d['addr'] !== '') { [$st, $hn] = split_street_house($d['addr']); if ($hn !== '') { $d['addr'] = $st; $d['house_no'] = $hn; } }
+    if ($d['dob'] !== '') { $iso = dob_iso($d['dob']); if ($iso !== '') $d['dob'] = $iso; else $warns[] = 'תאריך לידה לא זוהה'; }
     foreach (['idn' => 'ת״ז', 'f_id' => 'ת״ז האב', 'm_id' => 'ת״ז האם'] as $k => $lbl) {
       if ($d[$k] === '') continue;
       $d[$k] = import_id_norm($d[$k]);

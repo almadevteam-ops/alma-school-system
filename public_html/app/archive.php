@@ -8,6 +8,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $st = db()->prepare('SELECT name FROM students WHERE id = ? AND archived_at IS NOT NULL'); $st->execute([$sid]); $nm = $st->fetchColumn();
   if ($nm === false) fail_page(404, 'התלמידה לא נמצאה בארכיון.');
   db()->prepare("UPDATE students SET archived_at = NULL, archived_by = '' WHERE id = ?")->execute([$sid]);
+  $who = mb_substr((string)($me['name'] ?: $me['username']), 0, 100);
+  db()->prepare('INSERT INTO student_notes (student_id, body, author_id, author_name, created_at) VALUES (?,?,?,?,?)')->execute([$sid, 'הוחזרה מארכיון בתאריך ' . date('d/m/Y') . ' ע"י ' . $who, $me['id'], $who, now()]);
   audit('unarchive', 'student', (string)$sid, (string)$nm);
   $msg = 'התלמידה ' . $nm . ' הוחזרה לרשימת התלמידות.';
 }

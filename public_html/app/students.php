@@ -14,7 +14,7 @@ if ($c !== '') { $w[] = 'city LIKE ?'; $a[] = '%' . $c . '%'; }
 if (isset(STATUS[$s])) { $w[] = 'status = ?'; $a[] = $s; }
 $where = $w ? 'WHERE ' . implode(' AND ', $w) : '';
 $st = db()->prepare("SELECT COUNT(*) FROM students $where"); $st->execute($a); $total = (int)$st->fetchColumn();
-$st = db()->prepare("SELECT id, name, grade, cls, idn, city, addr, email, phone, f_name, f_phone, m_name, m_phone, status, family_id, (SELECT f.payer_kind FROM families f WHERE f.id = students.family_id) pk, (SELECT p.name FROM families f JOIN payers p ON p.id = f.payer_id WHERE f.id = students.family_id) payer_name FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
+$st = db()->prepare("SELECT id, name, grade, cls, idn, city, addr, house_no, email, phone, f_name, f_phone, m_name, m_phone, status, family_id, (SELECT f.payer_kind FROM families f WHERE f.id = students.family_id) pk, (SELECT p.name FROM families f JOIN payers p ON p.id = f.payer_id WHERE f.id = students.family_id) payer_name FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
 $st->execute($a); $rows = $st->fetchAll();
 function mask(string $v): string { return $v === '' ? '' : str_repeat('•', max(0, mb_strlen($v) - 3)) . mb_substr($v, -3); }
 page_head('תלמידות');
@@ -47,7 +47,7 @@ page_head('תלמידות');
     <div class="mgb dt">
       <dl class="kv">
         <div><dt>תעודת זהות</dt><dd><?= can_see_ids() && $r['idn'] !== '' ? '<bdi dir="ltr">' . e(mask($r['idn'])) . '</bdi>' : '<span class="mu">—</span>' ?></dd></div>
-        <div><dt>כתובת</dt><dd><?= $r['addr'] !== '' || $r['city'] !== '' ? e(trim($r['addr'] . ', ' . $r['city'], ' ,')) : '<span class="mu">—</span>' ?></dd></div>
+        <div><dt>כתובת</dt><dd><?= $r['addr'] !== '' || $r['city'] !== '' ? e(trim(trim($r['addr'] . ' ' . $r['house_no']) . ', ' . $r['city'], ' ,')) : '<span class="mu">—</span>' ?></dd></div>
         <div><dt>מייל</dt><dd><?= $r['email'] !== '' ? '<bdi dir="ltr">' . e($r['email']) . '</bdi>' : '<span class="mu">—</span>' ?></dd></div>
       </dl>
       <?php if (($r['pk'] ?? '') === 'org'): ?><p class="aptn">תלמידה בדירה: התשלום על ידי <?= e($r['payer_name'] ?: 'העמותה') ?>, אין צורך להתקשר להורים בעניין גבייה.</p><?php endif; ?>

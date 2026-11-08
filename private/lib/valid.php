@@ -39,3 +39,24 @@ function hmo_norm(string $v): string {
     foreach ($keys as $x) if (str_contains($t, $x)) return $k;
   return trim($v);
 }
+
+/** תאריך לידה בכל פורמט נפוץ (2012-05-03, 3/5/2012, 03.05.12) ל-YYYY-MM-DD. לא ניתן לפענח או תאריך לא קיים → ''. */
+function dob_iso(string $v): string {
+  $v = trim($v); if ($v === '') return '';
+  if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})/', $v, $m)) [$y, $mo, $d] = [(int)$m[1], (int)$m[2], (int)$m[3]];
+  elseif (preg_match('/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})$/', $v, $m)) { [$d, $mo, $y] = [(int)$m[1], (int)$m[2], (int)$m[3]]; if ($y < 100) $y += $y > ((int)date('y') + 1) ? 1900 : 2000; }
+  else return '';
+  return checkdate($mo, $d, $y) ? sprintf('%04d-%02d-%02d', $y, $mo, $d) : '';
+}
+/** כתובת חופשית ("הרצל 12א", "12 הרצל", "הרצל 5 דירה 3") ל-[רחוב, מספר בית]. הטקסט שאחרי המספר לא נכלל (נשמר ב-addr_orig). */
+function split_street_house(string $addr): array {
+  $a = trim(preg_replace('/\s+/u', ' ', str_replace(',', ' ', $addr)) ?? '');
+  if ($a === '') return ['', ''];
+  $t = explode(' ', $a);
+  foreach ($t as $i => $w) {
+    if (!preg_match('/^\d{1,4}[א-תA-Za-z]?(?:[\/\-]\d{1,4})?$/u', $w)) continue;
+    if ($i === 0) { if (count($t) < 2) return ['', $w]; return [implode(' ', array_slice($t, 1)), $w]; }
+    return [implode(' ', array_slice($t, 0, $i)), $w];
+  }
+  return [$a, ''];
+}

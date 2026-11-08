@@ -5,7 +5,7 @@ if (isset($_GET['template'])) {
   header('Content-Type: text/csv; charset=utf-8');
   header('Content-Disposition: attachment; filename="students-template.csv"');
   echo "\xEF\xBB\xBF" . implode(',', array_values(IMPORT_FIELDS)) . "\n";
-  echo 'דנה כהן,ט,,000000018,,הרצל 1,חיפה,,050-0000000,יוסי כהן,050-0000001,,רחל כהן,050-0000002,,כללית,נשואים,פעילה,' . "\n";
+  echo 'דנה כהן,ט,,000000018,,הרצל,1,חיפה,,050-0000000,יוסי כהן,050-0000001,,רחל כהן,050-0000002,,כללית,נשואים,פעילה,' . "\n";
   exit;
 }
 $err = ''; $msg = ''; $prev = null; $token = '';

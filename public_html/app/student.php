@@ -5,7 +5,7 @@ $isAdmin = $u['role'] === 'admin';
 // key => [label, maxlen, sensitive]
 $F = [
   'name' => ['שם מלא', 100, 0], 'grade' => ['כיתה', 4, 0], 'cls' => ['מחזור/כיתה מפורטת', 8, 0],
-  'idn' => ['תעודת זהות', 9, 1], 'dob' => ['תאריך לידה', 12, 0], 'addr' => ['כתובת', 200, 0], 'city' => ['עיר', 80, 0],
+  'idn' => ['תעודת זהות', 9, 1], 'dob' => ['תאריך לידה', 12, 0], 'city' => ['עיר', 80, 0], 'addr' => ['רחוב', 200, 0], 'house_no' => ['מספר בית', 12, 0],
   'email' => ['אימייל', 150, 0], 'phone' => ['טלפון התלמידה', 30, 0],
   'f_name' => ['שם האב', 80, 0], 'f_phone' => ['טלפון האב', 30, 0], 'f_id' => ['ת״ז האב', 9, 1],
   'm_name' => ['שם האם', 80, 0], 'm_phone' => ['טלפון האם', 30, 0], 'm_id' => ['ת״ז האם', 9, 1],
@@ -14,6 +14,7 @@ $F = [
 const ID_FIELDS = ['idn', 'f_id', 'm_id'];
 const PHONE_FIELDS = ['phone', 'f_phone', 'm_phone'];
 /** שדות שרק מנהלת מערכת יכולה לערוך בכרטיס של תלמידה קיימת. */
+const REQUIRED = ['name', 'grade'];
 const ADMIN_ONLY = ['name', 'idn', 'f_name', 'm_name', 'f_id', 'm_id'];
 $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $err = ''; $msg = '';
@@ -28,7 +29,7 @@ function notify_new_student(array $d, int $nid, array $by): void {
   if (!$to) return;
   $link = 'https://' . (string)cfg('host', 'alma-school.co.il') . '/app/student.php?id=' . $nid;
   $lines = ['נוספה תלמידה חדשה למערכת.', '', 'שם: ' . $d['name'], 'כיתה: ' . $d['grade'] . ($d['cls'] !== '' ? ' (' . $d['cls'] . ')' : ''),
-    'כתובת: ' . trim($d['addr'] . ', ' . $d['city'], ' ,'), 'אב: ' . trim($d['f_name'] . ' ' . fmt_phone($d['f_phone'])), 'אם: ' . trim($d['m_name'] . ' ' . fmt_phone($d['m_phone'])),
+    'כתובת: ' . trim(trim($d['addr'] . ' ' . $d['house_no']) . ', ' . $d['city'], ' ,'), 'אב: ' . trim($d['f_name'] . ' ' . fmt_phone($d['f_phone'])), 'אם: ' . trim($d['m_name'] . ' ' . fmt_phone($d['m_phone'])),
     'נוצרה על ידי: ' . ($by['name'] ?: $by['username']), '', 'לכרטיס התלמידה (נדרשת התחברות): ' . $link];
   $sent = 0; $fail = [];
   foreach ($to as $addr) { if (send_mail($addr, 'תלמידה חדשה נוספה: ' . $d['name'], implode("\n", $lines))) $sent++; else $fail[] = $addr . ' (' . mail_last_error() . ')'; }
@@ -40,7 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($act === 'archive') {
     require_role(['admin']);
     if (!$row || empty($_POST['ok'])) fail_page(400, 'נדרש אישור להעברה לארכיון.');
-    db()->prepare('UPDATE students SET archived_at = ?, archived_by = ? WHERE id = ?')->execute([now(), mb_substr((string)($u['name'] ?: $u['username']), 0, 100), $id]);
+    $who = mb_substr((string)($u['name'] ?: $u['username']), 0, 100);
+    db()->prepare('UPDATE students SET archived_at = ?, archived_by = ? WHERE id = ?')->execute([now(), $who, $id]);
+    db()->prepare('INSERT INTO student_notes (student_id, body, author_id, author_name, created_at) VALUES (?,?,?,?,?)')->execute([$id, 'הועברה לארכיון בתאריך ' . date('d/m/Y') . ' ע"י ' . $who, $u['id'], $who, now()]);
     audit('archive', 'student', (string)$id, $row['name']);
     redirect('students.php');
   }
@@ -51,6 +54,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($row && !$isAdmin) foreach (ADMIN_ONLY as $k) $d[$k] = (string)$row[$k];
   if (!can_see_ids()) foreach (ID_FIELDS as $k) $d[$k] = (string)($row[$k] ?? '');
   foreach (ID_FIELDS as $k) $d[$k] = norm_id($d[$k]);
+  $dobIn = $d['dob'];
+  $d['dob'] = dob_iso($dobIn);
+  if ($d['dob'] === '' && $dobIn === '' && $row && $row['dob'] !== '' && dob_iso((string)$row['dob']) === '') $d['dob'] = (string)$row['dob'];   // תאריך ישן שלא ניתן לפענוח לא נמחק
+  $d['house_no'] = preg_replace('/\s+/u', '', $d['house_no']) ?? $d['house_no'];
   foreach (PHONE_FIELDS as $k) $d[$k] = norm_phone($d[$k]);
   $d['hmo'] = $d['hmo'] === '' ? HMO_UNKNOWN : $d['hmo'];
   $oldStatus = $row['status'] ?? 'active';
@@ -61,10 +68,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($d['name'] === '') $err = 'נא למלא שם.';
   elseif (!in_array($d['grade'], GRADES, true)) $err = 'נא לבחור כיתה.';
   elseif ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $err = 'כתובת האימייל לא תקינה.';
+  elseif ($dobIn !== '' && dob_iso($dobIn) === '') $err = 'תאריך הלידה לא תקין.';
+  elseif ($d['dob'] !== '' && dob_iso($d['dob']) !== '' && $d['dob'] > date('Y-m-d')) $err = 'תאריך הלידה לא יכול להיות בעתיד.';
   else {
-    foreach (ID_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && (!preg_match('/^\d{9}$/', $d[$k]) || !valid_il_id($d[$k]))) { $err = $F[$k][0] . ': מספר זהות ישראלי לא תקין (9 ספרות, כולל ספרת ביקורת).'; break; }
+    foreach (ID_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && (!preg_match('/^\d{9}$/', $d[$k]) || !valid_il_id($d[$k]))) { $err = $F[$k][0] . ': יש להקליד מספר זהות תקין.'; break; }
     if (!$err) foreach (PHONE_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && !phone_ok($d[$k])) { $err = $F[$k][0] . ': מספר טלפון לא תקין (לדוגמה 050-1234567 או 04-1234567).'; break; }
-    if (!$err) $err = geo_check($d['city'], $d['addr'], $chg('city'), $chg('addr') || $chg('city')) ?? '';
+    if (!$err) $err = geo_check($d['city'], $d['addr'], $d['house_no'], $chg('city'), $chg('addr') || $chg('city'), $chg('house_no') || $chg('addr')) ?? '';
     if (!$err && $chg('hmo') && !in_array($d['hmo'], [...HMO_LIST, HMO_UNKNOWN], true)) $err = 'נא לבחור קופת חולים מהרשימה.';
     if (!$err && $row && $d['status'] !== $oldStatus && $statusNote === '') $err = 'שינוי סטטוס מחייב הערה: נא לכתוב את הסיבה.';
   }
@@ -116,8 +125,10 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     if ($sens && !can_see_ids()) continue;
     $lock = $ro || ($id && !$isAdmin && in_array($k, ADMIN_ONLY, true));
     $dis = $lock ? ' disabled' : '';
+    $req = in_array($k, REQUIRED, true) && !$lock; $star = in_array($k, REQUIRED, true) ? ' <span class="req" title="שדה חובה">*</span>' : '';
+    $reqa = $req ? ' required' : '';
     if ($k === 'grade') {
-      echo '<label>' . e($lbl) . '<select name="grade"' . ($ro ? ' disabled' : '') . '><option value=""></option>';
+      echo '<label><span>' . e($lbl) . $star . '</span><select name="grade"' . ($ro ? ' disabled' : '') . $reqa . '><option value=""></option>';
       foreach (GRADES as $x) echo '<option' . ($val('grade') === $x ? ' selected' : '') . '>' . e($x) . '</option>';
       echo '</select></label>'; continue;
     }
@@ -129,17 +140,25 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
       echo '</select></label>'; continue;
     }
     $v = (string)$val($k); $attr = '';
-    if (in_array($k, ID_FIELDS, true)) $attr = ' inputmode="numeric" pattern="[0-9]{9}" data-digits="1" dir="ltr"';
+    $geo = geo_ready() && !$ro;
+    if (in_array($k, ID_FIELDS, true)) $attr = ' inputmode="numeric" data-digits="1" data-init="' . e($v) . '" dir="ltr"';
     elseif (in_array($k, PHONE_FIELDS, true)) { $v = fmt_phone($v); $attr = ' type="tel" inputmode="tel" dir="ltr"'; }
-    elseif ($k === 'city' && geo_ready() && !$ro) $attr = ' data-geo="city" list="geo-cities"';
-    elseif ($k === 'addr' && geo_ready() && !$ro) $attr = ' data-geo="street" list="geo-streets" placeholder="רחוב ומספר בית"';
-    echo '<label>' . e($lbl) . '<input name="' . $k . '" maxlength="' . ($max > 9 && in_array($k, ID_FIELDS, true) ? 9 : $max) . '" value="' . e($v) . '"' . $attr . $dis . '></label>';
+    elseif ($k === 'dob') {
+      $iso = dob_iso($v); $attr = ' type="date" min="1990-01-01" max="' . date('Y-m-d') . '" dir="ltr"';
+      if ($v !== '' && $iso === '') $star .= ' <span class="mu">(קיים: ' . e($v) . ', יש לבחור תאריך)</span>';
+      $v = $iso;
+    }
+    elseif ($k === 'city' && $geo) $attr = ' data-geo="city" list="geo-cities" placeholder="הקלידי ובחרי מהרשימה"';
+    elseif ($k === 'addr' && $geo) $attr = ' data-geo="street" list="geo-streets" placeholder="בחרי רחוב מהרשימה"';
+    elseif ($k === 'house_no') $attr = ($geo ? ' data-geo="house"' : '') . ' placeholder="למשל 12 או 12א" dir="ltr"';
+    echo '<label><span>' . e($lbl) . $star . '</span><input name="' . $k . '" maxlength="' . ($max > 9 && in_array($k, ID_FIELDS, true) ? 9 : $max) . '" value="' . e($v) . '"' . $attr . $dis . $reqa . '></label>';
   endforeach; ?>
   <label>מצב הורים<select name="marital"<?= $ro ? ' disabled' : '' ?>><option value="married">נשואים</option><option value="divorced"<?= $val('marital') === 'divorced' ? ' selected' : '' ?>>גרושים</option></select></label>
   <label>סטטוס<select name="status" data-orig="<?= e($val('status') ?: 'active') ?>"<?= ($ro || !$isAdmin || !$id) ? ' disabled' : '' ?>><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . (($val('status') ?: 'active') === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
   <?php if ($isAdmin && $id): ?><label class="wide" id="stnote"<?= (($val('status_note') ?? '') === '') ? ' hidden' : '' ?>>סיבת שינוי הסטטוס (חובה)<input name="status_note" maxlength="500" value="<?= e((string)($row['status_note'] ?? '')) ?>" placeholder="למשל: עברה למוסד אחר"></label><?php endif; ?>
   </div>
-  <?php if (geo_ready() && !$ro): ?><datalist id="geo-cities"></datalist><datalist id="geo-streets"></datalist><p class="mu">כתובת: קודם בוחרים עיר מהרשימה, אחר כך רחוב מהרשימה ואז מוסיפים מספר בית.</p><?php endif; ?>
+  <?php if (geo_ready() && !$ro): ?><datalist id="geo-cities"></datalist><datalist id="geo-streets"></datalist><p class="mu">כתובת: קודם בוחרים עיר מהרשימה, אחר כך רחוב מהרשימה, ורק אז מקלידים מספר בית.</p><?php endif; ?>
+  <?php if (!$ro): ?><p class="mu"><span class="req">*</span> שדה חובה</p><?php endif; ?>
   <div class="acts">
   <?php if (!$ro): ?><button class="sv" disabled>שמירה</button><?php endif; ?>
   <a class="btn sec" href="<?= $id ? 'student.php?id=' . (int)$id : 'students.php' ?>">ביטול</a>
