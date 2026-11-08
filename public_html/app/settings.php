@@ -3,7 +3,6 @@ require __DIR__ . '/../../private/lib/bootstrap.php';
 $u = require_role(['admin']);
 $err = ''; $msg = '';
 $who = (string)($u['name'] ?: $u['username']);
-const MAX_RECIPIENTS = 15;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? '');

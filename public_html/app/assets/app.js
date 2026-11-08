@@ -187,4 +187,8 @@
     var on = b.getAttribute('data-on') === '1';
     document.querySelectorAll('input.' + b.getAttribute('data-chk')).forEach(function (c) { c.checked = on; });
   });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-print]') : null;
+    if (b) window.print();
+  });
 })();

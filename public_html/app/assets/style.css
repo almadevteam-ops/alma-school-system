@@ -224,3 +224,12 @@ input.locked{background:#efecee;color:#8a8389;cursor:not-allowed}
 .rlogo { display: block; margin: 0 auto 10px; max-height: 90px; width: auto; }
 .hp { position: absolute; width: 0; height: 0; opacity: 0; overflow: hidden; pointer-events: none; }
 tr.pendrow td { vertical-align: top; }
+
+@media print {
+  nav, .np, footer, .ver, .subnav, form.inl { display: none !important; }
+  body { background: #fff; }
+  main { max-width: none; padding: 0; }
+  .sc.prt { overflow: visible; }
+  .sc.prt table { font-size: 10px; }
+  .sc.prt th, .sc.prt td { padding: 2px 4px; }
+}

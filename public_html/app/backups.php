@@ -6,7 +6,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? '');
   if ($act === 'run') { [$ok, $msg] = bk_run(); audit('backup_run', 'system', '', $ok ? 'ידני: הצלחה' : 'ידני: ' . $msg); }
-  elseif ($act === 'dl') {
+  elseif ($act === 'gd_save') {
+    $cl = trim((string)($_POST['gd_client'] ?? '')); $fo = trim((string)($_POST['gd_folder'] ?? ''));
+    if (preg_match('~/folders/([A-Za-z0-9_-]+)~', $fo, $mm)) $fo = $mm[1];
+    if ($cl === '' || !preg_match('/^[A-Za-z0-9_-]{10,}$/', $fo)) { $ok = false; $msg = 'נא למלא Client ID ומזהה תיקיה (אפשר להדביק את קישור התיקיה).'; }
+    else { gd_save($cl, trim((string)($_POST['gd_secret'] ?? '')), trim((string)($_POST['gd_refresh'] ?? '')), $fo, (string)($me['name'] ?: $me['username'])); audit('gdrive_save', 'system', '', 'הגדרות דרייב עודכנו'); $ok = true; $msg = 'נשמר. לחצו "בדיקת חיבור".'; }
+  } elseif ($act === 'gd_check') {
+    try { $n = gd_check(); $ok = true; $msg = 'החיבור תקין. תיקיית היעד: ' . $n; } catch (Throwable $t) { $ok = false; $msg = $t->getMessage(); }
+  } elseif ($act === 'gd_run') {
+    if (!bk_list()) [$ok, $msg] = bk_run(); [$ok2, $m2] = gd_run(); $ok = $ok2; $msg = $m2; audit('gdrive_upload', 'system', '', $ok ? 'הצלחה' : $m2);
+  } elseif ($act === 'dl') {
     $f = (string)($_POST['f'] ?? '');
     if (!preg_match('/^alma-backup-\d{8}-\d{6}\.almb$/', $f) || !is_file(bk_dir() . '/' . $f)) { http_response_code(404); exit; }
     audit('backup_download', 'system', '', $f);
@@ -37,6 +46,23 @@ page_head('גיבויים');
   <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="dl"><input type="hidden" name="f" value="<?= e($b['name']) ?>"><button class="lnk">הורדה</button></form></td></tr><?php endforeach; ?>
   <?php if (!$list) echo '<tr><td colspan="4" class="mu">אין גיבויים.</td></tr>'; ?>
   </table>
+</div>
+<?php $gl = json_decode(setting_get('gd_last', ''), true) ?: []; ?>
+<div class="card">
+  <h2>עותק בגוגל דרייב</h2>
+  <?php if ($gl): ?><p class="<?= !empty($gl['ok']) ? 'ok' : 'er' ?>">העלאה אחרונה: <?= e(date('d/m/Y H:i', (int)$gl['time'])) ?> · <?= !empty($gl['ok']) ? e($gl['file']) : e($gl['error'] ?? '') ?></p><?php elseif (!gd_ready()): ?><p class="mu">לא הוגדר. הגיבוי מוצפן, ולכן בטוח לשמור אותו בדרייב. אחרי ההגדרה, כל גיבוי יומי (מה-cron) יועלה לתיקיה ויישמרו בה <?= GD_KEEP ?> האחרונים.</p><?php endif; ?>
+  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="gd_save">
+    <label>Client ID<input name="gd_client" dir="ltr" class="wide" value="<?= e(gd_get('client')) ?>" autocomplete="off"></label>
+    <label>Client Secret<input name="gd_secret" type="password" dir="ltr" placeholder="<?= gd_get('secret') !== '' ? 'שמור (השאירו ריק כדי לא לשנות)' : '' ?>" autocomplete="off"></label>
+    <label>Refresh Token<input name="gd_refresh" type="password" dir="ltr" placeholder="<?= gd_get('refresh') !== '' ? 'שמור (השאירו ריק כדי לא לשנות)' : '' ?>" autocomplete="off"></label>
+    <label>תיקיה (קישור או מזהה)<input name="gd_folder" dir="ltr" class="wide" value="<?= e(gd_get('folder')) ?>" autocomplete="off"></label><button>שמירה</button></form>
+  <?php if (gd_ready()): ?><form method="post" class="bar"><?= csrf_field() ?><button name="act" value="gd_check" class="sec">בדיקת חיבור</button><button name="act" value="gd_run">העלאת הגיבוי האחרון עכשיו</button></form><?php endif; ?>
+  <details><summary>איך מקבלים את הפרטים (פעם אחת, כ-10 דקות)</summary><ol>
+    <li>ב-<span dir="ltr">console.cloud.google.com</span> יוצרים פרויקט, מפעילים <b>Google Drive API</b>, ובמסך OAuth consent מוסיפים את המייל שלכם כ-Test user.</li>
+    <li>ב-Credentials יוצרים <b>OAuth client ID</b> מסוג Web application, ומוסיפים Authorized redirect URI: <span dir="ltr"><code>https://developers.google.com/oauthplayground</code></span>. מעתיקים את ה-Client ID וה-Secret.</li>
+    <li>נכנסים ל-<span dir="ltr">developers.google.com/oauthplayground</span>, בגלגל השיניים מסמנים Use your own OAuth credentials ומדביקים אותם, בוחרים את ההרשאה <span dir="ltr"><code>https://www.googleapis.com/auth/drive</code></span>, מאשרים, ולוחצים Exchange authorization code. מעתיקים את <b>Refresh token</b>.</li>
+    <li>יוצרים בדרייב תיקיה ייעודית (למשל "גיבויי עלמא") ומדביקים כאן את הקישור שלה.</li>
+  </ol><p class="mu">הקובץ שעולה מוצפן במפתח המערכת, כך שגם מי שיקבל גישה לדרייב לא יוכל לקרוא אותו. את מפתח ההצפנה (<span dir="ltr">private/app.key</span>) שומרים בנפרד.</p></details>
 </div>
 <div class="card">
   <h2>הפעלה אוטומטית (פעם אחת)</h2>

@@ -61,3 +61,15 @@ function sisters_of(array $s): array {
   $q = db()->prepare('SELECT id, name, grade FROM students WHERE id <> ? AND archived_at IS NULL AND (' . implode(' OR ', $w) . ') ORDER BY name'); $q->execute($a);
   return $q->fetchAll();
 }
+
+/** רושם תשלומי "מורשת גד" לכל תלמידות הדירה לחודש (רק החוסר), בקבוצה אחת כדי שאפשר יהיה לבטל. */
+function gad_mark(int $m, array $fams, int $gid, int $uid): int {
+  $pdo = db(); $n = 0; $data = collection_data(array_keys($fams));
+  $ins = $pdo->prepare('INSERT INTO payments (family_id, charge_id, for_month, amount, paid_on, method, ref, note, payer_id, batch, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+  foreach ($fams as $fid => $f) {
+    $d = $data[$fid] ?? null; if (!$d || ($d['status'][$m] ?? 'na') === 'na') continue;
+    $miss = round($d['monthly'] - (float)$d['cov'][$m], 2); if ($miss <= 0.004) continue;
+    $ins->execute([$fid, null, $m, $miss, date('Y-m-d'), 'payer', '', 'מורשת גד – ' . SCHOOL_MONTHS[$m], $gid, 'gad' . $m, $uid, now()]); $n++;
+  }
+  return $n;
+}

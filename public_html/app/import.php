@@ -67,6 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 page_head('ייבוא תלמידות');
 ?>
 <h1>ייבוא תלמידות מקובץ</h1>
+<p class="bar"><a class="btn sec" href="oldsync.php">יישור קו מהמערכת הישנה</a><a class="btn sec" href="exports.php">ייצוא נתונים</a><a class="btn sec" href="moe_sync.php">סנכרון משרד החינוך</a><a class="btn sec" href="rollover.php">מעבר שנה</a></p>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . ' <a href="students.php">לרשימת התלמידות</a></p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <?php if (!$prev): ?>
 <div class="card">

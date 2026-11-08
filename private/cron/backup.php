@@ -6,4 +6,5 @@ require __DIR__ . '/../lib/bootstrap.php';
 require_once __DIR__ . '/../lib/backup.php';
 [$ok, $msg] = bk_run();
 echo ($ok ? 'OK: ' : 'ERROR: ') . $msg . "\n";
+if ($ok && gd_ready()) { [$gok, $gmsg] = gd_run(); echo ($gok ? 'DRIVE OK: ' : 'DRIVE ERROR: ') . $gmsg . "\n"; }
 exit($ok ? 0 : 1);

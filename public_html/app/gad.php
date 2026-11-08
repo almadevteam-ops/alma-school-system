@@ -4,17 +4,6 @@ $u = require_role(COLLECTION_ROLES);
 $canAct = in_array($u['role'], ['admin', 'finance'], true);
 $msg = ''; $err = '';
 $gid = gad_payer_id(); $fams = gad_families();
-/** רושם תשלומי "מורשת גד" לכל תלמידות הדירה לחודש (רק החוסר), בקבוצה אחת כדי שאפשר יהיה לבטל. */
-function gad_mark(int $m, array $fams, int $gid, int $uid): int {
-  $pdo = db(); $n = 0; $data = collection_data(array_keys($fams));
-  $ins = $pdo->prepare('INSERT INTO payments (family_id, charge_id, for_month, amount, paid_on, method, ref, note, payer_id, batch, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
-  foreach ($fams as $fid => $f) {
-    $d = $data[$fid] ?? null; if (!$d || ($d['status'][$m] ?? 'na') === 'na') continue;
-    $miss = round($d['monthly'] - (float)$d['cov'][$m], 2); if ($miss <= 0.004) continue;
-    $ins->execute([$fid, null, $m, $miss, date('Y-m-d'), 'payer', '', 'מורשת גד – ' . SCHOOL_MONTHS[$m], $gid, 'gad' . $m, $uid, now()]); $n++;
-  }
-  return $n;
-}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check(); if (!$canAct) fail_page(403, 'אין לך הרשאה לפעולה זו.');
   $m = (int)($_POST['month'] ?? 0); $act = (string)($_POST['act'] ?? '');
