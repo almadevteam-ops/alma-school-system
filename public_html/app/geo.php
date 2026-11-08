@@ -37,7 +37,7 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
 }
 [$nc, $ns] = geo_stats();
-if ($badList === null && $ns > 0) { $dry = []; foreach (db()->query("SELECT id, name, city, addr FROM students WHERE archived_at IS NULL AND (city <> '' OR addr <> '')")->fetchAll() as $x) { $why = []; $c = geo_match_city((string)$x['city']); if ($x['city'] !== '' && $c === null) $why[] = 'עיר "' . $x['city'] . '"'; elseif ($x['addr'] !== '') { $cid = geo_city_id($c ?? ''); if (!$cid || geo_match_street($cid, (string)$x['addr']) === null) $why[] = 'רחוב "' . $x['addr'] . '"'; } if ($why) $dry[] = ['id' => (int)$x['id'], 'name' => $x['name'], 'why' => implode(', ', $why)]; } $badList = $dry; }
+if ($badList === null && $ns > 0) { $dry = []; foreach (db()->query("SELECT id, name, city, addr FROM students WHERE archived_at IS NULL AND (city <> '' OR addr <> '')")->fetchAll() as $x) { $why = []; if (geo_is_exception((string)$x['city'])) continue; $c = geo_match_city((string)$x['city']); if ($x['city'] !== '' && $c === null) $why[] = 'עיר "' . $x['city'] . '"'; elseif ($x['addr'] !== '' && !geo_is_exception((string)$x['addr'])) { $cid = geo_city_id($c ?? ''); if (!$cid || geo_match_street($cid, (string)$x['addr']) === null) $why[] = 'רחוב "' . $x['addr'] . '"'; } if ($why) $dry[] = ['id' => (int)$x['id'], 'name' => $x['name'], 'why' => implode(', ', $why)]; } $badList = $dry; }
 page_head('ערים ורחובות');
 ?>
 <h1>ערים ורחובות <span class="mu">(ספריית כתובות)</span></h1>
@@ -54,7 +54,7 @@ page_head('ערים ורחובות');
 <?php if ($ns > 0): ?>
 <div class="card">
   <h2>התאמת כתובות קיימות</h2>
-  <p class="mu">הכתובות הישנות נשמרו כטקסט אחד. עדכון מסד הנתונים כבר הפריד מהן את מספר הבית (המקור נשמר), והתאמה זו מחליפה עיר ורחוב בשם הרשמי מהספרייה. היא רצה אוטומטית אחרי כל טעינה, ואפשר להריץ אותה שוב.</p>
+  <p class="mu">כתובת חריגה שמתחילה ב"דירה" (למשל "דירה בנשר") נשארת כמו שהיא ולא מסומנת כשגויה. הכתובות הישנות נשמרו כטקסט אחד. עדכון מסד הנתונים כבר הפריד מהן את מספר הבית (המקור נשמר), והתאמה זו מחליפה עיר ורחוב בשם הרשמי מהספרייה. היא רצה אוטומטית אחרי כל טעינה, ואפשר להריץ אותה שוב.</p>
   <form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="rematch"><button class="sec">הרצת התאמה עכשיו</button></form>
   <?php if ($badList): ?>
   <h2>תלמידות שהכתובת שלהן לא הותאמה (<?= count($badList) ?>)</h2>

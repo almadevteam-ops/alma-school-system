@@ -43,12 +43,16 @@ function geo_match_city(string $city): ?string {
   foreach (geo_cities() as $c) { $cn = geo_norm((string)$c); if ($cn === $n) return (string)$c; if (str_starts_with($cn, $n . ' ')) $pre[] = (string)$c; }
   return count($pre) === 1 ? $pre[0] : null;
 }
+/** כתובות חריגות שמותר להקליד בשדה הרחוב בלי שיופיעו ברשימה (למשל "דירה בנשר"): לא נבדקות מול הספרייה ולא מסומנות כשגויות. */
+function geo_is_exception(string $street): bool { return (bool)preg_match('/^\s*(דירה|פנימיה|פנימייה)(\s|$)/u', $street); }
 const HOUSE_RE = '/^\d{1,4}\s?[א-תA-Za-z]?(?:\s?[\/\-]\s?\d{1,4})?$/u';
 /** בדיקת עיר, רחוב ומספר בית מול הספרייה. מחזירה הודעת שגיאה או null. פעילה רק אחרי שהספרייה נטענה. */
 function geo_check(string $city, string $street, string $house, bool $chkCity, bool $chkStreet, bool $chkHouse): ?string {
   if (!geo_ready()) { if ($chkHouse && $house !== '' && !preg_match(HOUSE_RE, $house)) return 'מספר בית לא תקין (למשל 12 או 12א).'; return null; }
   $cid = null;
+  if (geo_is_exception($city)) return null;   // "דירה בנשר" בשדה העיר
   if ($chkCity && trim($city) !== '') { $cid = geo_city_id($city); if ($cid === null) return 'העיר "' . $city . '" לא ברשימה. נא לבחור עיר מהרשימה שנפתחת בהקלדה.'; }
+  if (geo_is_exception($street)) return null;
   if ($chkStreet && trim($street) !== '') {
     if (trim($city) === '') return 'נא לבחור עיר לפני הרחוב.';
     $cid ??= geo_city_id($city);
@@ -69,8 +73,10 @@ function geo_rematch_students(): array {
   $up = db()->prepare('UPDATE students SET city = ?, addr = ? WHERE id = ?');
   foreach (db()->query("SELECT id, name, city, addr FROM students WHERE archived_at IS NULL AND (city <> '' OR addr <> '')")->fetchAll() as $r) {
     $city = (string)$r['city']; $addr = (string)$r['addr']; $why = [];
+    if ($city !== '' && geo_is_exception($city)) continue;   // כתובת חריגה בשדה העיר: לא נוגעים ולא מסמנים
     if ($city !== '') { $m = geo_match_city($city); if ($m !== null) $city = $m; else $why[] = 'עיר "' . $city . '"'; }
-    if ($addr !== '' && !$why) { $cid = geo_city_id($city); $m = $cid ? geo_match_street($cid, $addr) : null; if ($m !== null) $addr = $m; else $why[] = 'רחוב "' . $addr . '"'; }
+    if ($addr !== '' && geo_is_exception($addr)) { /* כתובת חריגה: נשארת כמו שהיא */ }
+    elseif ($addr !== '' && !$why) { $cid = geo_city_id($city); $m = $cid ? geo_match_street($cid, $addr) : null; if ($m !== null) $addr = $m; else $why[] = 'רחוב "' . $addr . '"'; }
     elseif ($addr !== '' && $why) $why[] = 'רחוב "' . $addr . '" (העיר לא זוהתה)';
     if ($city !== (string)$r['city'] || $addr !== (string)$r['addr']) { $up->execute([$city, $addr, $r['id']]); $upd++; }
     if ($why) $bad[] = ['id' => (int)$r['id'], 'name' => (string)$r['name'], 'why' => implode(', ', $why)];
