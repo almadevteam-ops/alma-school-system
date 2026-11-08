@@ -63,4 +63,25 @@
     var cb = f.querySelector('input[type=checkbox]'), b = f.querySelector('button');
     if (cb && b) { cb.addEventListener('change', function () { b.disabled = !cb.checked; }); b.disabled = !cb.checked; }
   });
+
+  // השלמת עיר ורחוב מהספרייה (רק כשהספרייה נטענה והשדות מסומנים)
+  (function () {
+    var c = document.querySelector('input[data-geo=city]'), st = document.querySelector('input[data-geo=street]');
+    if (!c || !st) return;
+    function fill(id, arr) {
+      var dl = document.getElementById(id); if (!dl) return; dl.textContent = '';
+      arr.forEach(function (n) { var o = document.createElement('option'); o.value = n; dl.appendChild(o); });
+    }
+    function get(url, cb) { fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : []; }).then(cb).catch(function () {}); }
+    var loaded = false, last = null;
+    function cities() { if (!loaded) { loaded = true; get('/app/geo_lookup.php?t=cities', function (a) { fill('geo-cities', a); }); } }
+    function streets() {
+      var v = c.value.trim(); if (v === last) return; last = v;
+      if (!v) { fill('geo-streets', []); return; }
+      get('/app/geo_lookup.php?t=streets&city=' + encodeURIComponent(v), function (a) { fill('geo-streets', a); });
+    }
+    c.addEventListener('focus', cities); c.addEventListener('change', streets); c.addEventListener('blur', streets);
+    st.addEventListener('focus', streets);
+    cities(); streets();
+  })();
 })();

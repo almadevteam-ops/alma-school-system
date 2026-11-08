@@ -64,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   else {
     foreach (ID_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && (!preg_match('/^\d{9}$/', $d[$k]) || !valid_il_id($d[$k]))) { $err = $F[$k][0] . ': מספר זהות ישראלי לא תקין (9 ספרות, כולל ספרת ביקורת).'; break; }
     if (!$err) foreach (PHONE_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && !phone_ok($d[$k])) { $err = $F[$k][0] . ': מספר טלפון לא תקין (לדוגמה 050-1234567 או 04-1234567).'; break; }
+    if (!$err) $err = geo_check($d['city'], $d['addr'], $chg('city'), $chg('addr') || $chg('city')) ?? '';
     if (!$err && $chg('hmo') && !in_array($d['hmo'], [...HMO_LIST, HMO_UNKNOWN], true)) $err = 'נא לבחור קופת חולים מהרשימה.';
     if (!$err && $row && $d['status'] !== $oldStatus && $statusNote === '') $err = 'שינוי סטטוס מחייב הערה: נא לכתוב את הסיבה.';
   }
@@ -130,12 +131,15 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     $v = (string)$val($k); $attr = '';
     if (in_array($k, ID_FIELDS, true)) $attr = ' inputmode="numeric" pattern="[0-9]{9}" data-digits="1" dir="ltr"';
     elseif (in_array($k, PHONE_FIELDS, true)) { $v = fmt_phone($v); $attr = ' type="tel" inputmode="tel" dir="ltr"'; }
+    elseif ($k === 'city' && geo_ready() && !$ro) $attr = ' data-geo="city" list="geo-cities"';
+    elseif ($k === 'addr' && geo_ready() && !$ro) $attr = ' data-geo="street" list="geo-streets" placeholder="רחוב ומספר בית"';
     echo '<label>' . e($lbl) . '<input name="' . $k . '" maxlength="' . ($max > 9 && in_array($k, ID_FIELDS, true) ? 9 : $max) . '" value="' . e($v) . '"' . $attr . $dis . '></label>';
   endforeach; ?>
   <label>מצב הורים<select name="marital"<?= $ro ? ' disabled' : '' ?>><option value="married">נשואים</option><option value="divorced"<?= $val('marital') === 'divorced' ? ' selected' : '' ?>>גרושים</option></select></label>
   <label>סטטוס<select name="status" data-orig="<?= e($val('status') ?: 'active') ?>"<?= ($ro || !$isAdmin || !$id) ? ' disabled' : '' ?>><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . (($val('status') ?: 'active') === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
   <?php if ($isAdmin && $id): ?><label class="wide" id="stnote"<?= (($val('status_note') ?? '') === '') ? ' hidden' : '' ?>>סיבת שינוי הסטטוס (חובה)<input name="status_note" maxlength="500" value="<?= e((string)($row['status_note'] ?? '')) ?>" placeholder="למשל: עברה למוסד אחר"></label><?php endif; ?>
   </div>
+  <?php if (geo_ready() && !$ro): ?><datalist id="geo-cities"></datalist><datalist id="geo-streets"></datalist><p class="mu">כתובת: קודם בוחרים עיר מהרשימה, אחר כך רחוב מהרשימה ואז מוסיפים מספר בית.</p><?php endif; ?>
   <div class="acts">
   <?php if (!$ro): ?><button class="sv" disabled>שמירה</button><?php endif; ?>
   <a class="btn sec" href="<?= $id ? 'student.php?id=' . (int)$id : 'students.php' ?>">ביטול</a>
