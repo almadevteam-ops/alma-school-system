@@ -207,3 +207,11 @@ input.locked{background:#efecee;color:#8a8389;cursor:not-allowed}
 .gh3{--h:280}
 .gh4{--h:340}
 .gh5{--h:20}
+
+/* שלב 2 */
+.mc.wip,.mb.wip{background:#e4eefb;color:#1d4f91}.mc.ref,.mb.ref{background:#efe4f7;color:#5b2d82}
+.subnav{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px}
+.tel.wa{background:#e8f6ec;color:#17612e;border-color:#c5e6cf}
+.mset{margin-top:14px;align-items:flex-end}
+.ced{display:inline-block;margin-inline-end:6px}.ced>summary{cursor:pointer;list-style:none}.ced[open]{display:block;margin-bottom:8px}
+.hero .mset label{color:#eadfe8}.hero>p.mu{color:#d9cdd6}.hero .mset select{min-width:150px}

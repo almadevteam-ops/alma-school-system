@@ -31,16 +31,24 @@ function collection_data(?array $ids = null): array {
     if (!$ids) return [];
     $w = ' WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')'; $a = array_map('intval', $ids);
   }
-  $st = $pdo->prepare('SELECT id, monthly, months FROM families' . $w); $st->execute($a);
+  // תעריף אפקטיבי = תעריף התיק פחות הנחות מאושרות של תלמידות פעילות בתיק
+  $st = $pdo->prepare('SELECT id, monthly, months, (SELECT COALESCE(SUM(s.disc_amt),0) FROM students s WHERE s.family_id = families.id AND s.disc_on = 1 AND s.disc_status = \'approved\' AND s.archived_at IS NULL AND s.status <> \'left\') disc,
+    (SELECT COUNT(*) FROM students s WHERE s.family_id = families.id AND s.archived_at IS NULL) ns,
+    (SELECT COUNT(*) FROM students s WHERE s.family_id = families.id AND s.archived_at IS NULL AND s.status = \'left\' AND s.left_month IS NOT NULL) nl,
+    (SELECT MAX(s.left_month) FROM students s WHERE s.family_id = families.id AND s.archived_at IS NULL AND s.status = \'left\') lm FROM families' . $w); $st->execute($a);
   $out = [];
   foreach ($st->fetchAll() as $f) {
     $n = max(1, min(12, (int)$f['months']));
-    $out[(int)$f['id']] = ['monthly' => (float)$f['monthly'], 'months' => $n, 'tuition' => round((float)$f['monthly'] * $n, 2),
+    $eff = max(0.0, (float)$f['monthly'] - (float)$f['disc']);
+    $cap = ((int)$f['ns'] > 0 && (int)$f['ns'] === (int)$f['nl']) ? max(0, (int)$f['lm'] - 1) : $n;   // כל התלמידות בתיק עזבו: החיוב נעצר מחודש העזיבה
+    $out[(int)$f['id']] = ['monthly' => $eff, 'base' => (float)$f['monthly'], 'disc' => (float)$f['disc'], 'months' => $n, 'cap' => min($n, $cap), 'tuition' => 0.0, 'marks' => [],
       'charges' => 0.0, 'paid' => 0.0, 'cpaid' => 0.0, 'balance' => 0.0, 'assigned' => array_fill(1, $n, 0.0), 'pool' => 0.0, 'cov' => [], 'status' => []];
   }
   if (!$out) return [];
   $in = implode(',', array_fill(0, count($out), '?')); $keys = array_keys($out);
-  $st = $pdo->prepare("SELECT family_id, SUM(amount) s FROM charges WHERE voided_at IS NULL AND family_id IN ($in) GROUP BY family_id"); $st->execute($keys);
+  $st = $pdo->prepare("SELECT family_id, month, mark FROM month_marks WHERE family_id IN ($in)"); $st->execute($keys);
+  foreach ($st->fetchAll() as $r) $out[(int)$r['family_id']]['marks'][(int)$r['month']] = (string)$r['mark'];
+  $st = $pdo->prepare("SELECT family_id, SUM(amount - disc_amt) s FROM charges WHERE voided_at IS NULL AND mark <> 'n' AND family_id IN ($in) GROUP BY family_id"); $st->execute($keys);
   foreach ($st->fetchAll() as $r) $out[(int)$r['family_id']]['charges'] = (float)$r['s'];
   $st = $pdo->prepare("SELECT family_id, charge_id, for_month, SUM(amount) s FROM payments WHERE voided_at IS NULL AND family_id IN ($in) GROUP BY family_id, charge_id, for_month"); $st->execute($keys);
   foreach ($st->fetchAll() as $r) {
@@ -55,13 +63,19 @@ function collection_data(?array $ids = null): array {
   }
   foreach ($out as &$o) {
     $pool = $o['pool'];
+    $billed = 0;
     for ($m = 1; $m <= $o['months']; $m++) {
+      $mk = $o['marks'][$m] ?? '';
+      $na = $m > $o['cap'] || $mk === 'n';
       $c = $o['assigned'][$m];
       $need = $o['monthly'] - $c;
-      if ($need > 0.004 && $pool > 0.004) { $t = min($need, $pool); $c += $t; $pool -= $t; }
+      if (!$na && $need > 0.004 && $pool > 0.004) { $t = min($need, $pool); $c += $t; $pool -= $t; }
       $o['cov'][$m] = round($c, 2);
-      $o['status'][$m] = $o['monthly'] <= 0 ? 'na' : ($c >= $o['monthly'] - 0.004 ? 'paid' : ($c > 0.004 ? 'part' : 'none'));
+      if (!$na) $billed++;
+      $full = $o['monthly'] > 0 && $c >= $o['monthly'] - 0.004;
+      $o['status'][$m] = ($na || $o['monthly'] <= 0) ? 'na' : ($full ? 'paid' : ($mk === 'r' ? 'ref' : ($mk === 'w' ? 'wip' : ($c > 0.004 ? 'part' : 'none'))));
     }
+    $o['billed'] = $billed; $o['tuition'] = round($o['monthly'] * $billed, 2);
     $o['paid'] = round($o['paid'], 2); $o['cpaid'] = round($o['cpaid'], 2);
     $o['balance'] = round($o['tuition'] + $o['charges'] - $o['paid'], 2);
   }
@@ -78,14 +92,14 @@ function collection_arrears(array $s, $collectDay = null, ?int $ts = null): arra
   $ts = $ts ?? time(); $cd = (int)$collectDay; if ($cd < 1 || $cd > 28) $cd = 10;
   $due = school_month_now($ts) - 1 + ((int)date('j', $ts) >= $cd ? 1 : 0);
   $due = max(0, min($due, (int)$s['months']));
-  $behind = 0; $gap = 0.0;
+  $behind = 0; $gap = 0.0; $ms = [];
   for ($m = 1; $m <= $due; $m++) {
-    if (($s['status'][$m] ?? 'na') === 'na') continue;
+    if (in_array($s['status'][$m] ?? 'na', ['na', 'wip', 'ref'], true)) continue;
     $miss = $s['monthly'] - (float)$s['cov'][$m];
-    if ($miss > 0.004) { $behind++; $gap += $miss; }
+    if ($miss > 0.004) { $behind++; $gap += $miss; $ms[] = SCHOOL_MONTHS[$m]; }
   }
   $cgap = max(0.0, round((float)$s['charges'] - (float)$s['cpaid'], 2));
-  return ['due' => $due, 'behind' => $behind, 'gap' => round($gap, 2), 'cgap' => $cgap, 'late' => round($gap + $cgap, 2)];
+  return ['due' => $due, 'behind' => $behind, 'months' => $ms, 'gap' => round($gap, 2), 'cgap' => $cgap, 'late' => round($gap + $cgap, 2)];
 }
 /** אנשי קשר לתיקים: [family_id => ['f' => ['אבא','שם','טלפון'], 'm' => ['אמא',...]]] – הראשון שמולא מבין האחיות. */
 function family_contacts(array $ids): array {
@@ -111,7 +125,7 @@ function month_cells(array $s, bool $big = false): string {
       $h .= '<div class="mb ' . $x . '" title="' . e(SCHOOL_MONTHS[$m] . ': ' . money($amt)) . '"><small>' . e(SCHOOL_MONTHS[$m]) . '</small><b>' . e($t) . '</b></div>';
       continue;
     }
-    $sym = ['paid' => '✓', 'part' => '½', 'none' => '·', 'na' => '–'][$x];
+    $sym = ['paid' => '✓', 'part' => '½', 'none' => '·', 'na' => '–', 'wip' => '…', 'ref' => '↺'][$x];
     $h .= '<span class="mc ' . $x . '" title="' . e(SCHOOL_MONTHS[$m] . ': ' . money($amt)) . '">' . $sym . '</span>';
   }
   return $h;
@@ -241,4 +255,31 @@ function payimp_parse(string $raw): array {
     if (count($out['rows']) > 3000) return array_merge($out, ['fatal' => 'יותר מדי שורות.']);
   }
   return $out;
+}
+
+/** קישור לתשלום מאובטח (ניתן לשינוי בהגדרות). */
+function pay_url(): string {
+  $u = setting_get('pay_url', 'https://www.matara.pro/nedarimplus/online/?mosad=7001899');
+  return preg_match('~^https://~i', $u) ? $u : '';
+}
+/** קישור וואטסאפ עם הודעה מוכנה למספר ישראלי. */
+function wa_url(string $phone, string $text): string {
+  $d = preg_replace('/\D/', '', $phone) ?? '';
+  if ($d !== '' && $d[0] === '0') $d = '972' . substr($d, 1);
+  return 'https://wa.me/' . $d . '?text=' . rawurlencode($text);
+}
+/** הודעת תזכורת לשכר לימוד. */
+function wa_reminder(string $names, array $arrears, float $balance): string {
+  $ms = $arrears['months'] ?? [];
+  $t = 'שלום, תזכורת בנוגע לשכר הלימוד של ' . $names . ($ms ? ' (חודשים: ' . implode(', ', $ms) . ')' : '') . '. יתרה לתשלום: ' . (int)round($balance) . ' ש"ח. תודה!';
+  $p = pay_url(); if ($p !== '') $t .= "\nלתשלום מאובטח: " . $p;
+  return $t;
+}
+/** תיקים של "מורשת גד" (תלמידות בדירה): [family_id => ['name'=>..., 'names'=>...]] */
+function gad_families(): array {
+  $gid = gad_payer_id();
+  $st = db()->prepare("SELECT f.id, f.name, (SELECT GROUP_CONCAT(s.name ORDER BY s.name SEPARATOR ', ') FROM students s WHERE s.family_id = f.id AND s.archived_at IS NULL) names FROM families f WHERE (f.payer_kind = 'org' AND f.payer_id = ?) ORDER BY f.name");
+  $st->execute([$gid]); $o = [];
+  foreach ($st->fetchAll() as $r) $o[(int)$r['id']] = $r;
+  return $o;
 }

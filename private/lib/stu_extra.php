@@ -2,7 +2,6 @@
 declare(strict_types=1);
 // לוגיקה משותפת לשדות הנוספים בכרטיס תלמידה: דירה, הנחות, אחיות, אחים מהספח.
 const ALLERGY_OPTS = ['חלב', 'בוטנים', 'אגוזים', 'אחר'];
-const SCHOOL_MONTHS = ['ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט'];
 const DISC_STATUS = ['approved' => 'מאושרת', 'pending' => 'ממתינה לאישור'];
 
 function apt_tuition(): float { return (float)setting_get('apt_tuition', '300'); }

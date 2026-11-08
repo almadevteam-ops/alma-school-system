@@ -100,6 +100,7 @@ page_head('גבייה');
   <div class="tile p"><span class="mu">יתרה לגבייה (כולל מה שעוד לא הגיע מועדו)</span><b class="er"><?= e(money($T['balance'])) ?></b></div>
 </div>
 <?php $qs = fn(array $o) => http_build_query(array_merge(['q' => $q, 'f' => $f, 'm' => $mm, 'k' => $kind, 'min' => $min ?: '', 's' => $sort, 'v' => $view], $o)); ?>
+<p class="subnav"><a class="btn sec" href="monthly.php">סיכום חודשי</a> <a class="btn sec" href="charges.php">גביות חד־פעמיות</a> <a class="btn sec" href="gad.php">מורשת גד (דירות)</a><?php if (pay_url() !== '') echo ' <a class="btn" href="' . e(pay_url()) . '" target="_blank" rel="noopener">💳 תשלום מאובטח</a>'; ?></p>
 <div class="seg" role="tablist">
   <a href="collection.php?<?= e($qs(['v' => 'table'])) ?>" class="<?= $view === 'table' ? 'on' : '' ?>">☰ טבלה</a>
   <a href="collection.php?<?= e($qs(['v' => 'calls', 's' => $view === 'calls' ? $sort : 'late', 'f' => $f === 'all' ? 'late' : $f])) ?>" class="<?= $view === 'calls' ? 'on' : '' ?>">☎ רשימת התקשרות</a>
@@ -126,7 +127,7 @@ $badge = function (array $x): string {
 };
 ?>
 <?php sec_open('list', 'רשימת התלמידות', count($fams) . ' תיקים' . ($view === 'calls' ? ' · רשימת התקשרות' : ''), '☺', ['list']); ?>
-<?php if ($view === 'calls'): ?>
+<?php if ($view === 'calls'): $fams = array_values(array_filter($fams, fn($r) => $r['payer_kind'] !== 'org')); ?>
 <div class="calls">
 <?php foreach ($fams as $r): $d = $data[(int)$r['id']]; $x = $arr[(int)$r['id']]; $ct = $contacts[(int)$r['id']] ?? []; ?>
   <div class="cc<?= $x['late'] > 0.004 ? ($x['behind'] >= 2 ? ' hi' : ' lo') : '' ?>">
@@ -137,6 +138,7 @@ $badge = function (array $x): string {
     <div class="tels">
       <?php foreach (['f', 'm'] as $k) if (isset($ct[$k])): [$lab, $nm, $ph] = $ct[$k]; ?>
         <a class="tel" href="<?= e(tel_href($ph)) ?>"><?= $phoneIco ?><span><b><?= e($lab) ?></b><?= $nm !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e(fmt_phone($ph)) ?></bdi></a>
+        <a class="tel wa" href="<?= e(wa_url($ph, wa_reminder((string)$r['names'], $x, $d['balance']))) ?>" target="_blank" rel="noopener">וואטסאפ</a>
       <?php endif; if (!$ct) echo '<span class="mu">אין מספר טלפון של ההורים בכרטיס התלמידה.</span>'; ?>
     </div>
   </div>
@@ -158,7 +160,7 @@ $badge = function (array $x): string {
     <div class="mgb dt">
       <div class="mbs full"><?= month_cells($d, true) ?></div>
       <dl class="kv">
-        <div><dt>תעריף</dt><dd><?= e(money($r['monthly'])) ?> × <?= (int)$r['months'] ?> חודשים = <?= e(money($d['tuition'])) ?></dd></div>
+        <div><dt>תעריף</dt><dd><?= e(money($d['monthly'])) ?> × <?= (int)$d['billed'] ?> חודשים = <?= e(money($d['tuition'])) ?><?= $d['disc'] > 0 ? ' <span class="mu">(תעריף ' . e(money($d['base'])) . ' פחות הנחות ' . e(money($d['disc'])) . ')</span>' : '' ?></dd></div>
         <div><dt>חיובים נוספים</dt><dd><?= e(money($d['charges'])) ?></dd></div>
         <div><dt>שולם</dt><dd class="ok"><?= e(money($d['paid'])) ?></dd></div>
         <div><dt>צורת תשלום</dt><dd><?= $r['method'] !== '' ? e(method_label($r['method'])) : '<span class="mu">—</span>' ?><?= $r['collect_day'] ? ' · יום ' . (int)$r['collect_day'] : '' ?></dd></div>

@@ -21,7 +21,18 @@ function payimp_existing(PDO $pdo, array $rows): array {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? '');
-  if ($act === 'preview') {
+  if ($act === 'preview_paste') {
+    $lines = array_filter(array_map('trim', preg_split('/\R/u', (string)($_POST['paste'] ?? ''))));
+    if (!$lines) $err = 'לא הודבקו שורות.';
+    else {
+      $raw = "תלמידה,חודש,סכום\n";
+      foreach ($lines as $l) { $c = array_map('trim', preg_split('/[,\t;]/u', $l)); $raw .= implode(',', array_map(fn($x) => '"' . str_replace('"', '""', $x) . '"', [$c[0] ?? '', (string)($c[1] ?? ''), (string)($c[2] ?? '')])) . "\n"; }
+      $raw = preg_replace_callback('/^"([^"]*)","(\d{1,2})","(.*)"$/mu', function ($m) { $n = (int)$m[2]; $mi = ($n >= 9 ? $n - 8 : $n + 4); return '"' . $m[1] . '","' . ($n >= 1 && $n <= 12 ? $mi : $m[2]) . '","' . $m[3] . '"'; }, $raw);
+      $prev = payimp_parse($raw);
+      if ($prev['fatal']) { $err = $prev['fatal']; $prev = null; }
+      else { $token = bin2hex(random_bytes(16)); $p = pstaged($token); file_put_contents($p, enc_bytes($raw, 'payimp:' . $token), LOCK_EX); @chmod($p, 0600); audit('payimport_preview', 'payment', '', count($prev['rows']) . ' שורות (הדבקה)'); }
+    }
+  } elseif ($act === 'preview') {
     $f = $_FILES['csv'] ?? null;
     if (!$f || ($f['error'] ?? 4) !== UPLOAD_ERR_OK) $err = upload_error_text((int)($f['error'] ?? UPLOAD_ERR_NO_FILE));
     elseif ($f['size'] > IMPORT_MAX_BYTES) $err = 'הקובץ גדול מדי.';
@@ -66,6 +77,11 @@ page_head('ייבוא תשלומים');
   <p class="mu">אם אין תאריך, יירשם ראשון החודש כתאריך משוער. אותו תשלום (תיק, סכום, תאריך, אמצעי, חודש) לא ייכנס פעמיים. לא נשמרים מספרי כרטיס.</p>
   <form method="post" enctype="multipart/form-data"><?= csrf_field() ?><input type="hidden" name="act" value="preview">
     <div class="bar"><label>קובץ CSV<input type="file" name="csv" required accept=".csv,text/csv,text/plain"></label><button>תצוגה מקדימה</button><a class="btn sec" href="payments_import.php?template=1">תבנית לדוגמה</a></div></form>
+</div>
+<div class="card">
+  <h2>עדכון מהגבייה בהדבקה</h2>
+  <p class="mu">הדביקי שורות בפורמט: <b>שם תלמידה, חודש, סכום</b>. החודש הוא מספר חודש לועזי (9 = ספטמבר, 1 = ינואר) או שם החודש בעברית. המערכת מציגה תצוגה מקדימה עם אזהרות (תלמידה לא מזוהה, כפילות, סכום חסר) לפני הרישום.</p>
+  <form method="post"><?= csrf_field() ?><input type="hidden" name="act" value="preview_paste"><textarea name="paste" rows="6" placeholder="כהן דנה,10,650" required></textarea><p><button>תצוגה מקדימה</button></p></form>
 </div>
 <?php else: $ok = 0; $bad = 0; $tot = 0.0; foreach ($prev['rows'] as $r) { if ($r['errors']) $bad++; else { $ok++; $tot += $r['amount']; } } ?>
 <div class="card">

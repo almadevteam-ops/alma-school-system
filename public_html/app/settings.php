@@ -12,6 +12,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($act === 'fees') {
     $apt = max(0, (float)str_replace(',', '.', (string)($_POST['apt_tuition'] ?? '0'))); $sib = max(0, (float)str_replace(',', '.', (string)($_POST['sib_discount'] ?? '0')));
     setting_set('apt_tuition', (string)$apt, $who); setting_set('sib_discount', (string)$sib, $who); audit('settings', 'settings', '', "דירה $apt · אחיות $sib"); $msg = 'נשמר.';
+  } elseif ($act === 'payurl') {
+    $pu = trim((string)($_POST['pay_url'] ?? ''));
+    if ($pu !== '' && (!preg_match('~^https://[^\s]+$~i', $pu) || mb_strlen($pu) > 300)) $err = 'הקישור חייב להתחיל ב-https:// ולא להכיל רווחים.';
+    else { setting_set('pay_url', $pu, $who); audit('settings', 'settings', '', 'קישור תשלום מאובטח עודכן'); $msg = 'נשמר.'; }
   } elseif ($act === 'sib_apply') {
     $n = sib_apply($who); audit('sib_apply', 'settings', '', "הנחת אחיות הוחלה על $n"); $msg = "הנחת אחיות הוחלה על $n תלמידות.";
   } elseif ($act === 'add' || $act === 'edit') {
@@ -51,6 +55,11 @@ page_head('הגדרות');
     <button>שמירה</button></form>
   <form method="post" class="acts"><?= csrf_field() ?><input type="hidden" name="act" value="sib_apply"><button class="sec" data-confirm="להחיל הנחת אחיות על כל התיקים עם יותר מתלמידה אחת? הנחות קיימות לא יוחלפו.">החלת הנחת אחיות עכשיו</button></form>
   <p class="mu">ההחלה מוסיפה את ההנחה לכל אחות החל מהשנייה בכל תיק (הבוגרת ביותר ללא הנחה), בלי לשנות הנחות שכבר הוגדרו. אפשר לשנות כל הנחה בכרטיס התלמידה.</p>
+</div>
+<div class="card">
+  <h2>קישור לתשלום מאובטח</h2>
+  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="payurl"><label>כתובת (https://)<input name="pay_url" dir="ltr" class="wide" value="<?= e(setting_get('pay_url', 'https://www.matara.pro/nedarimplus/online/?mosad=7001899')) ?>"></label><button>שמירה</button></form>
+  <p class="mu">הקישור מופיע ככפתור בעמודי הגבייה, ונשלח בהודעות וואטסאפ להורים (תזכורת ועדכון אשראי). ריק = ללא כפתור.</p>
 </div>
 <div class="card">
   <h2>נמענים להודעה על הרשמת תלמידה חדשה</h2>
