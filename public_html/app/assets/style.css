@@ -188,3 +188,8 @@ label.bad-l{color:var(--er)}
 .req{color:var(--er);font-weight:800}
 .fe{color:var(--er);font-size:13px;font-weight:600}.fe[hidden]{display:none}
 input.locked{background:#efecee;color:#8a8389;cursor:not-allowed}
+
+/* הגדרות: טבלת נמענים */
+.rcp .ur{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 14px;cursor:default}
+.rcp .rrow input{width:100%}.rcp .racts{display:flex;gap:8px;justify-content:flex-end;white-space:nowrap}
+@media(max-width:700px){.rcp .ur{grid-template-columns:1fr}.rcp .uth{display:none}.rcp .racts{justify-content:flex-start}}

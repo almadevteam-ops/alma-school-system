@@ -29,6 +29,7 @@ require_once __DIR__ . '/crypto.php';
 require_once __DIR__ . '/valid.php';
 require_once __DIR__ . '/geo.php';
 require_once __DIR__ . '/settings.php';
+require_once __DIR__ . '/notify.php';
 require_once __DIR__ . '/totp.php';
 require_once __DIR__ . '/migrate.php';
 require_once __DIR__ . '/files.php';

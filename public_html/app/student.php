@@ -23,18 +23,6 @@ if ($id) {
   $st = db()->prepare('SELECT * FROM students WHERE id = ?'); $st->execute([$id]); $row = $st->fetch();
   if (!$row) fail_page(404, 'התלמידה לא נמצאה.');
 }
-/** שולחת מייל לצוות כשנוצרת תלמידה חדשה. הנמענים ב-config: new_student_notify (כתובת או כמה כתובות מופרדות בפסיק). */
-function notify_new_student(array $d, int $nid, array $by): void {
-  $to = new_student_recipients();
-  if (!$to) return;
-  $link = 'https://' . (string)cfg('host', 'alma-school.co.il') . '/app/student.php?id=' . $nid;
-  $lines = ['נוספה תלמידה חדשה למערכת.', '', 'שם: ' . $d['name'], 'כיתה: ' . $d['grade'] . ($d['cls'] !== '' ? ' (' . $d['cls'] . ')' : ''),
-    'כתובת: ' . trim(trim($d['addr'] . ' ' . $d['house_no']) . ', ' . $d['city'], ' ,'), 'אב: ' . trim($d['f_name'] . ' ' . fmt_phone($d['f_phone'])), 'אם: ' . trim($d['m_name'] . ' ' . fmt_phone($d['m_phone'])),
-    'נוצרה על ידי: ' . ($by['name'] ?: $by['username']), '', 'לכרטיס התלמידה (נדרשת התחברות): ' . $link];
-  $sent = 0; $fail = [];
-  foreach ($to as $addr) { if (send_mail($addr, 'תלמידה חדשה נוספה: ' . $d['name'], implode("\n", $lines))) $sent++; else $fail[] = $addr . ' (' . mail_last_error() . ')'; }
-  audit($fail ? 'new_student_mail_failed' : 'new_student_mail', 'student', (string)$nid, "נשלח $sent" . ($fail ? '; נכשל: ' . implode(', ', $fail) : ''));
-}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? 'save');
@@ -96,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       db()->prepare("INSERT INTO students ($cols, created_at, updated_at) VALUES ($ph, ?, ?)")->execute([...array_values($d), now(), now()]);
       $nid = (int)db()->lastInsertId();
       audit('create', 'student', (string)$nid, $d['name']);
-      try { notify_new_student($d, $nid, $u); } catch (Throwable $t) { audit('new_student_mail_failed', 'student', (string)$nid, mb_substr($t->getMessage(), 0, 200)); }
+      try { notify_new_student($d, $nid); } catch (Throwable $t) { audit('new_student_mail_failed', 'student', (string)$nid, mb_substr($t->getMessage(), 0, 200)); }
       redirect('student.php?id=' . $nid . '&saved=1');
     }
   }

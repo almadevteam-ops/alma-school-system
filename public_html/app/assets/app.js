@@ -123,4 +123,9 @@
     st.addEventListener('input', sync); st.addEventListener('change', sync);
     sync();
   })();
+  // כפתורים עם data-confirm: שואלים לפני מחיקה
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-confirm]') : null;
+    if (b && !window.confirm(b.getAttribute('data-confirm'))) e.preventDefault();
+  });
 })();
