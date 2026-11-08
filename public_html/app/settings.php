@@ -9,7 +9,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $act = (string)($_POST['act'] ?? '');
   $addr = strtolower(trim((string)($_POST['email'] ?? ''))); $label = mb_substr(trim((string)($_POST['label'] ?? '')), 0, 100);
   $rid = (int)($_POST['rid'] ?? 0);
-  if ($act === 'add' || $act === 'edit') {
+  if ($act === 'fees') {
+    $apt = max(0, (float)str_replace(',', '.', (string)($_POST['apt_tuition'] ?? '0'))); $sib = max(0, (float)str_replace(',', '.', (string)($_POST['sib_discount'] ?? '0')));
+    setting_set('apt_tuition', (string)$apt, $who); setting_set('sib_discount', (string)$sib, $who); audit('settings', 'settings', '', "דירה $apt · אחיות $sib"); $msg = 'נשמר.';
+  } elseif ($act === 'sib_apply') {
+    $n = sib_apply($who); audit('sib_apply', 'settings', '', "הנחת אחיות הוחלה על $n"); $msg = "הנחת אחיות הוחלה על $n תלמידות.";
+  } elseif ($act === 'add' || $act === 'edit') {
     if (!filter_var($addr, FILTER_VALIDATE_EMAIL) || mb_strlen($addr) > 150 || preg_match('/[\r\n]/', $addr)) $err = 'כתובת המייל לא תקינה.';
     elseif ($act === 'add' && count(notify_recipients()) >= MAX_RECIPIENTS) $err = 'אפשר להגדיר עד ' . MAX_RECIPIENTS . ' נמענים.';
     else {
@@ -38,6 +43,15 @@ page_head('הגדרות');
 ?>
 <h1>הגדרות</h1>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
+<div class="card">
+  <h2>תעריפים והנחות</h2>
+  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="fees">
+    <label>שכר לימוד חודשי לתלמידה בדירה (₪)<input name="apt_tuition" inputmode="decimal" value="<?= e((string)(float)setting_get('apt_tuition', '300')) ?>"></label>
+    <label>הנחת אחיות לחודש (₪), מהאחות השנייה בתיק<input name="sib_discount" inputmode="decimal" value="<?= e((string)(float)setting_get('sib_discount', '50')) ?>"></label>
+    <button>שמירה</button></form>
+  <form method="post" class="acts"><?= csrf_field() ?><input type="hidden" name="act" value="sib_apply"><button class="sec" data-confirm="להחיל הנחת אחיות על כל התיקים עם יותר מתלמידה אחת? הנחות קיימות לא יוחלפו.">החלת הנחת אחיות עכשיו</button></form>
+  <p class="mu">ההחלה מוסיפה את ההנחה לכל אחות החל מהשנייה בכל תיק (הבוגרת ביותר ללא הנחה), בלי לשנות הנחות שכבר הוגדרו. אפשר לשנות כל הנחה בכרטיס התלמידה.</p>
+</div>
 <div class="card">
   <h2>נמענים להודעה על הרשמת תלמידה חדשה</h2>
   <p class="mu">בכל פעם שתלמידה חדשה נרשמת במערכת, נשלח מייל קצר עם שם התלמידה, מספר הזהות וקישור לאתר, לכל הכתובות ברשימה. אפשר להוסיף, לערוך ולמחוק נמענים. שימו לב: מספר הזהות נשלח במייל לכל מי שברשימה.</p>

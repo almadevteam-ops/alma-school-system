@@ -193,3 +193,17 @@ input.locked{background:#efecee;color:#8a8389;cursor:not-allowed}
 .rcp .ur{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 14px;cursor:default}
 .rcp .rrow input{width:100%}.rcp .racts{display:flex;gap:8px;justify-content:flex-end;white-space:nowrap}
 @media(max-width:700px){.rcp .ur{grid-template-columns:1fr}.rcp .uth{display:none}.rcp .racts{justify-content:flex-start}}
+
+/* שלב 1: שדות נוספים בכרטיס */
+.fg label.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px}.fg label.chk input{width:auto}
+.fg .chkrow{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}.fg .chkrow input[name=allergy_other]{max-width:220px}
+.fg .dsc{border:1px solid var(--ln);border-radius:10px;padding:10px 12px;background:#fafcfd}.fg .dsc .fg{margin-top:8px}
+.gchip{display:inline-block;min-width:26px;text-align:center;padding:1px 8px;border-radius:99px;font-weight:600;font-size:13px;background:hsl(var(--h) 38% 93%);color:hsl(var(--h) 45% 26%);border:1px solid hsl(var(--h) 30% 85%)}
+.pill.pending{background:#fff6dc;color:#7a5a05}
+.flags{display:inline-flex;gap:4px;margin-inline-start:6px;vertical-align:middle}.flags .fl{font-size:11px;padding:0 7px;border-radius:99px;background:#eef2f4;color:var(--mu);border:1px solid var(--ln)}
+.gh0{--h:205}
+.gh1{--h:150}
+.gh2{--h:45}
+.gh3{--h:280}
+.gh4{--h:340}
+.gh5{--h:20}

@@ -5,6 +5,8 @@ $q = trim((string)($_GET['q'] ?? ''));
 $g = (string)($_GET['g'] ?? '');
 $c = trim((string)($_GET['c'] ?? ''));
 $s = (string)($_GET['s'] ?? 'active');
+$x = (string)($_GET['x'] ?? '');
+const XF = ['apt' => 'בדירה', 'vaada' => 'עברה ועדה', 's07' => 'מוגדרת 07', 'disc' => 'הנחה', 'pend' => 'הנחה ממתינה', 'allergy' => 'יש רגישות'];
 $pg = max(1, (int)($_GET['p'] ?? 1));
 $per = 50;
 $w = ['archived_at IS NULL']; $a = [];
@@ -12,9 +14,12 @@ if ($q !== '') { $w[] = '(name LIKE ? OR idn LIKE ? OR phone LIKE ? OR f_phone L
 if (in_array($g, GRADES, true)) { $w[] = 'grade = ?'; $a[] = $g; }
 if ($c !== '') { $w[] = 'city LIKE ?'; $a[] = '%' . $c . '%'; }
 if (isset(STATUS[$s])) { $w[] = 'status = ?'; $a[] = $s; }
+if ($x === 'apt') $w[] = '(is_apt = 1 OR family_id IN (SELECT id FROM families WHERE payer_kind = \'org\'))';
+elseif ($x === 'vaada') $w[] = 'vaada = 1'; elseif ($x === 's07') $w[] = 's07 = 1'; elseif ($x === 'allergy') $w[] = 'allergy = 1';
+elseif ($x === 'disc') $w[] = 'disc_on = 1'; elseif ($x === 'pend') $w[] = "disc_on = 1 AND disc_status = 'pending'";
 $where = $w ? 'WHERE ' . implode(' AND ', $w) : '';
 $st = db()->prepare("SELECT COUNT(*) FROM students $where"); $st->execute($a); $total = (int)$st->fetchColumn();
-$st = db()->prepare("SELECT id, name, grade, cls, idn, city, addr, house_no, email, phone, f_name, f_phone, m_name, m_phone, status, family_id, (SELECT f.payer_kind FROM families f WHERE f.id = students.family_id) pk, (SELECT p.name FROM families f JOIN payers p ON p.id = f.payer_id WHERE f.id = students.family_id) payer_name FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
+$st = db()->prepare("SELECT id, name, grade, cls, is_apt, vaada, s07, allergy, disc_on, disc_status, idn, city, addr, house_no, email, phone, f_name, f_phone, m_name, m_phone, status, family_id, (SELECT f.payer_kind FROM families f WHERE f.id = students.family_id) pk, (SELECT p.name FROM families f JOIN payers p ON p.id = f.payer_id WHERE f.id = students.family_id) payer_name FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
 $st->execute($a); $rows = $st->fetchAll();
 function mask(string $v): string { return $v === '' ? '' : str_repeat('•', max(0, mb_strlen($v) - 3)) . mb_substr($v, -3); }
 page_head('תלמידות');
@@ -25,8 +30,9 @@ page_head('תלמידות');
   <label>כיתה<select name="g"><option value="">הכל</option><?php foreach (GRADES as $x) echo '<option' . ($g === $x ? ' selected' : '') . '>' . e($x) . '</option>'; ?></select></label>
   <label>עיר<input name="c" value="<?= e($c) ?>" placeholder="למשל חיפה"></label>
   <label>סטטוס<select name="s"><option value="">הכל</option><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . ($s === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
+  <label>הצגה<select name="x"><option value="">הכל</option><?php foreach (XF as $k => $v) echo '<option value="' . $k . '"' . ($x === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
   <button>OK</button>
-  <a class="btn sec<?= ($q !== '' || $g !== '' || $c !== '' || $s !== 'active') ? ' hot' : '' ?>" href="students.php" title="איפוס כל הסינונים">↺ איפוס</a>
+  <a class="btn sec<?= ($q !== '' || $g !== '' || $c !== '' || $s !== 'active' || $x !== '') ? ' hot' : '' ?>" href="students.php" title="איפוס כל הסינונים">↺ איפוס</a>
   <?php if (can_edit()) echo '<a class="btn sec" href="student.php">+ תלמידה חדשה</a>'; ?>
 </form>
 <?php sec_open('list', 'רשימת התלמידות', $total . ' תוצאות', '☺', ['list']); ?>
@@ -37,8 +43,8 @@ page_head('תלמידות');
   <details class="uw">
     <summary class="ur">
       <span class="c idx"><?= $off0 + $i + 1 ?></span>
-      <span class="c nm"><b><?= e($r['name']) ?></b><?= ($r['pk'] ?? '') === 'org' ? ' <span class="apt" title="' . e('משלם: ' . ($r['payer_name'] ?? '')) . '">בדירה</span>' : '' ?></span>
-      <span class="c" data-l="כיתה"><?= e($r['grade'] . ($r['cls'] && $r['cls'] !== $r['grade'] ? ' (' . $r['cls'] . ')' : '')) ?></span>
+      <span class="c nm"><b><?= e($r['name']) ?></b><?= ($r['pk'] ?? '') === 'org' || $r['is_apt'] ? ' <span class="apt" title="' . e('משלם: ' . ($r['payer_name'] ?? 'מורשת גד')) . '">בדירה</span>' : '' ?><?php $fl = []; if ($r['vaada']) $fl[] = 'ועדה'; if ($r['s07']) $fl[] = '07'; if ($r['allergy']) $fl[] = 'רגישות'; if ($r['disc_on']) $fl[] = $r['disc_status'] === 'pending' ? 'הנחה ממתינה' : 'הנחה'; if ($fl) echo '<span class="flags">' . implode('', array_map(fn($z) => '<span class="fl">' . e($z) . '</span>', $fl)) . '</span>'; ?></span>
+      <span class="c" data-l="כיתה"><span class="gchip gh<?= (int)array_search($r['grade'], GRADES, true) ?>"><?= e($r['grade'] . ($r['cls'] && $r['cls'] !== $r['grade'] ? ' (' . $r['cls'] . ')' : '')) ?></span></span>
       <span class="c" data-l="עיר"><?= $r['city'] !== '' ? e($r['city']) : '<span class="mu">—</span>' ?></span>
       <span class="c" data-l="טלפון"><?= $r['phone'] !== '' ? '<bdi dir="ltr">' . e(fmt_phone($r['phone'])) . '</bdi>' : '<span class="mu">—</span>' ?></span>
       <span class="c stt"><span class="pill <?= e($r['status']) ?>"><?= e(STATUS[$r['status']] ?? $r['status']) ?></span></span>

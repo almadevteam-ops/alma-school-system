@@ -40,6 +40,16 @@
     window.addEventListener('pageshow', upd);
     upd();
   });
+  // תיבות סימון שמגלות שדות נלווים (ועדה, רגישות, הנחה)
+  document.querySelectorAll('input[data-tg]').forEach(function (c) {
+    var k = c.getAttribute('data-tg');
+    function t() { document.querySelectorAll('[data-g=' + k + ']').forEach(function (x) { x.hidden = !c.checked; }); }
+    c.addEventListener('change', t); t();
+  });
+  document.querySelectorAll('select[name=status]').forEach(function (sel) {
+    var w = document.getElementById('lmwrap'); if (!w) return;
+    sel.addEventListener('change', function () { w.hidden = sel.value !== 'left'; });
+  });
   // שינוי סטטוס: מציגים ודורשים שדה סיבה
   document.querySelectorAll('select[data-orig]').forEach(function (sel) {
     var box = document.getElementById('stnote'); if (!box) return;
@@ -80,7 +90,7 @@
     i.addEventListener('input', function () { var v = i.value.replace(/\D/g, '').slice(0, 9); if (v !== i.value) i.value = v; });
     bind(i, function (v) { return idOk(v) ? '' : 'יש להקליד מספר זהות תקין'; });
   });
-  ['phone', 'f_phone', 'm_phone'].forEach(function (n) { bind(document.querySelector('input[name=' + n + ']'), function (v) { return phoneOk(v) ? '' : 'יש להקליד מספר טלפון תקין (למשל 050-1234567)'; }); });
+  ['phone', 'f_phone', 'm_phone', 'home_phone'].forEach(function (n) { bind(document.querySelector('input[name=' + n + ']'), function (v) { return phoneOk(v) ? '' : 'יש להקליד מספר טלפון תקין (למשל 050-1234567)'; }); });
   bind(document.querySelector('input[name=email]'), function (v) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? '' : 'יש להקליד כתובת מייל תקינה'; });
   bind(document.querySelector('input[name=house_no]'), function (v) { return /^\d{1,4}\s?[א-תA-Za-z]?(\s?[\/\-]\s?\d{1,4})?$/.test(v) ? '' : 'מספר בית לא תקין (למשל 12 או 12א)'; });
   bind(document.querySelector('form.dirty input[name=name]'), null, true);
