@@ -90,7 +90,7 @@ function collection_arrears(array $s, $collectDay = null, ?int $ts = null): arra
 /** אנשי קשר לתיקים: [family_id => ['f' => ['אבא','שם','טלפון'], 'm' => ['אמא',...]]] – הראשון שמולא מבין האחיות. */
 function family_contacts(array $ids): array {
   if (!$ids) return [];
-  $st = db()->prepare('SELECT family_id, f_name, f_phone, m_name, m_phone FROM students WHERE family_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY id');
+  $st = db()->prepare('SELECT family_id, f_name, f_phone, m_name, m_phone FROM students WHERE archived_at IS NULL AND family_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY id');
   $st->execute(array_map('intval', $ids)); $o = [];
   foreach ($st->fetchAll() as $r) {
     $f = (int)$r['family_id'];
@@ -126,7 +126,7 @@ function family_default_name(array $students): string {
   return $first !== '' ? 'משפחת ' . $first : 'משפחה חדשה';
 }
 function family_students(int $fid): array {
-  $st = db()->prepare('SELECT id, name, grade, cls, f_name, f_phone, m_name, m_phone, marital, status FROM students WHERE family_id = ? ORDER BY FIELD(grade,\'ז\',\'ח\',\'ט\',\'י\',\'יא\',\'יב\'), name');
+  $st = db()->prepare('SELECT id, name, grade, cls, f_name, f_phone, m_name, m_phone, marital, status FROM students WHERE family_id = ? AND archived_at IS NULL ORDER BY FIELD(grade,\'ז\',\'ח\',\'ט\',\'י\',\'יא\',\'יב\'), name');
   $st->execute([$fid]); return $st->fetchAll();
 }
 

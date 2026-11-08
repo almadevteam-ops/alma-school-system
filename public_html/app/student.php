@@ -1,15 +1,20 @@
 <?php
 require __DIR__ . '/../../private/lib/bootstrap.php';
 $u = require_login();
+$isAdmin = $u['role'] === 'admin';
 // key => [label, maxlen, sensitive]
 $F = [
   'name' => ['שם מלא', 100, 0], 'grade' => ['כיתה', 4, 0], 'cls' => ['מחזור/כיתה מפורטת', 8, 0],
-  'idn' => ['תעודת זהות', 20, 1], 'dob' => ['תאריך לידה', 12, 0], 'addr' => ['כתובת', 200, 0], 'city' => ['עיר', 80, 0],
+  'idn' => ['תעודת זהות', 9, 1], 'dob' => ['תאריך לידה', 12, 0], 'addr' => ['כתובת', 200, 0], 'city' => ['עיר', 80, 0],
   'email' => ['אימייל', 150, 0], 'phone' => ['טלפון התלמידה', 30, 0],
-  'f_name' => ['שם האב', 80, 0], 'f_phone' => ['טלפון האב', 30, 0], 'f_id' => ['ת״ז האב', 20, 1],
-  'm_name' => ['שם האם', 80, 0], 'm_phone' => ['טלפון האם', 30, 0], 'm_id' => ['ת״ז האם', 20, 1],
+  'f_name' => ['שם האב', 80, 0], 'f_phone' => ['טלפון האב', 30, 0], 'f_id' => ['ת״ז האב', 9, 1],
+  'm_name' => ['שם האם', 80, 0], 'm_phone' => ['טלפון האם', 30, 0], 'm_id' => ['ת״ז האם', 9, 1],
   'hmo' => ['קופת חולים', 30, 0],
 ];
+const ID_FIELDS = ['idn', 'f_id', 'm_id'];
+const PHONE_FIELDS = ['phone', 'f_phone', 'm_phone'];
+/** שדות שרק מנהלת מערכת יכולה לערוך בכרטיס של תלמידה קיימת. */
+const ADMIN_ONLY = ['name', 'idn', 'f_name', 'm_name', 'f_id', 'm_id'];
 $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $err = ''; $msg = '';
 $row = null;
@@ -17,51 +22,76 @@ if ($id) {
   $st = db()->prepare('SELECT * FROM students WHERE id = ?'); $st->execute([$id]); $row = $st->fetch();
   if (!$row) fail_page(404, 'התלמידה לא נמצאה.');
 }
-function valid_il_id(string $v): bool {
-  $v = preg_replace('/\D/', '', $v); if ($v === '' || strlen($v) > 9) return false;
-  $v = str_pad($v, 9, '0', STR_PAD_LEFT); $s = 0;
-  for ($i = 0; $i < 9; $i++) { $n = (int)$v[$i] * (($i % 2) + 1); $s += $n > 9 ? $n - 9 : $n; }
-  return $s % 10 === 0;
+/** שולחת מייל לצוות כשנוצרת תלמידה חדשה. הנמענים ב-config: new_student_notify (כתובת או כמה כתובות מופרדות בפסיק). */
+function notify_new_student(array $d, int $nid, array $by): void {
+  $to = array_filter(array_map('trim', explode(',', (string)cfg('new_student_notify', ''))));
+  if (!$to) return;
+  $link = 'https://' . (string)cfg('host', 'alma-school.co.il') . '/app/student.php?id=' . $nid;
+  $lines = ['נוספה תלמידה חדשה למערכת.', '', 'שם: ' . $d['name'], 'כיתה: ' . $d['grade'] . ($d['cls'] !== '' ? ' (' . $d['cls'] . ')' : ''),
+    'כתובת: ' . trim($d['addr'] . ', ' . $d['city'], ' ,'), 'אב: ' . trim($d['f_name'] . ' ' . fmt_phone($d['f_phone'])), 'אם: ' . trim($d['m_name'] . ' ' . fmt_phone($d['m_phone'])),
+    'נוצרה על ידי: ' . ($by['name'] ?: $by['username']), '', 'לכרטיס התלמידה (נדרשת התחברות): ' . $link];
+  $sent = 0; $fail = [];
+  foreach ($to as $addr) { if (send_mail($addr, 'תלמידה חדשה נוספה: ' . $d['name'], implode("\n", $lines))) $sent++; else $fail[] = $addr . ' (' . mail_last_error() . ')'; }
+  audit($fail ? 'new_student_mail_failed' : 'new_student_mail', 'student', (string)$nid, "נשלח $sent" . ($fail ? '; נכשל: ' . implode(', ', $fail) : ''));
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? 'save');
-  if ($act === 'delete') {
+  if ($act === 'archive') {
     require_role(['admin']);
-    if (!$row || empty($_POST['ok'])) fail_page(400, 'נדרש אישור מחיקה.');
-    $fs = db()->prepare('SELECT stored FROM student_files WHERE student_id = ?'); $fs->execute([$id]);
-    $storedList = array_merge(array_column($fs->fetchAll(), 'stored'), note_stored_for_student($id));
-    db()->prepare('DELETE FROM students WHERE id = ?')->execute([$id]);
-    foreach ($storedList as $sn) remove_stored_file($sn);
-    audit('delete', 'student', (string)$id, $row['name']);
+    if (!$row || empty($_POST['ok'])) fail_page(400, 'נדרש אישור להעברה לארכיון.');
+    db()->prepare('UPDATE students SET archived_at = ?, archived_by = ? WHERE id = ?')->execute([now(), mb_substr((string)($u['name'] ?: $u['username']), 0, 100), $id]);
+    audit('archive', 'student', (string)$id, $row['name']);
     redirect('students.php');
   }
   if (!can_edit()) fail_page(403, 'אין לך הרשאת עריכה.');
   $d = [];
   foreach ($F as $k => [$lbl, $max]) $d[$k] = mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max);
-  $d['status'] = isset(STATUS[$_POST['status'] ?? '']) ? $_POST['status'] : 'active';
+  // שדות נעולים לא-מנהלת: הערך הקיים נשמר, גם אם נשלח משהו אחר
+  if ($row && !$isAdmin) foreach (ADMIN_ONLY as $k) $d[$k] = (string)$row[$k];
+  if (!can_see_ids()) foreach (ID_FIELDS as $k) $d[$k] = (string)($row[$k] ?? '');
+  foreach (ID_FIELDS as $k) $d[$k] = norm_id($d[$k]);
+  foreach (PHONE_FIELDS as $k) $d[$k] = norm_phone($d[$k]);
+  $d['hmo'] = $d['hmo'] === '' ? HMO_UNKNOWN : $d['hmo'];
+  $oldStatus = $row['status'] ?? 'active';
+  $d['status'] = ($isAdmin && isset(STATUS[$_POST['status'] ?? ''])) ? $_POST['status'] : $oldStatus;
+  $statusNote = mb_substr(trim((string)($_POST['status_note'] ?? '')), 0, NOTE_MAX_LEN);
   $d['marital'] = ($_POST['marital'] ?? '') === 'divorced' ? 'divorced' : 'married';
+  $chg = fn(string $k) => !$row || (string)$row[$k] !== (string)$d[$k];   // בדיקות תקינות רק על מה ששונה (נתונים ישנים לא חוסמים שמירה)
   if ($d['name'] === '') $err = 'נא למלא שם.';
   elseif (!in_array($d['grade'], GRADES, true)) $err = 'נא לבחור כיתה.';
   elseif ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $err = 'כתובת האימייל לא תקינה.';
+  else {
+    foreach (ID_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && (!preg_match('/^\d{9}$/', $d[$k]) || !valid_il_id($d[$k]))) { $err = $F[$k][0] . ': מספר זהות ישראלי לא תקין (9 ספרות, כולל ספרת ביקורת).'; break; }
+    if (!$err) foreach (PHONE_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && !phone_ok($d[$k])) { $err = $F[$k][0] . ': מספר טלפון לא תקין (לדוגמה 050-1234567 או 04-1234567).'; break; }
+    if (!$err && $chg('hmo') && !in_array($d['hmo'], [...HMO_LIST, HMO_UNKNOWN], true)) $err = 'נא לבחור קופת חולים מהרשימה.';
+    if (!$err && $row && $d['status'] !== $oldStatus && $statusNote === '') $err = 'שינוי סטטוס מחייב הערה: נא לכתוב את הסיבה.';
+  }
   if (!$err) {
     if ($id) {
       $changed = [];
       foreach ($d as $k => $v) if ((string)($row[$k] ?? '') !== (string)$v) $changed[] = $k;
       $set = implode(',', array_map(fn($k) => "$k = ?", array_keys($d)));
       db()->prepare("UPDATE students SET $set, updated_at = ? WHERE id = ?")->execute([...array_values($d), now(), $id]);
+      if ($d['status'] !== $oldStatus) {
+        db()->prepare('INSERT INTO student_notes (student_id, body, author_id, author_name, created_at) VALUES (?,?,?,?,?)')->execute([$id, 'שינוי סטטוס: ' . (STATUS[$oldStatus] ?? $oldStatus) . ' ← ' . (STATUS[$d['status']] ?? $d['status']) . "\nסיבה: " . $statusNote, $u['id'], mb_substr((string)($u['name'] ?: $u['username']), 0, 100), now()]);
+        audit('status_change', 'student', (string)$id, $oldStatus . '→' . $d['status']);
+      }
       audit('update', 'student', (string)$id, 'שדות: ' . implode(',', $changed));
       redirect('student.php?id=' . $id . '&saved=1');
     } else {
+      $d['status'] = 'active';
       $cols = implode(',', array_keys($d));
       $ph = implode(',', array_fill(0, count($d), '?'));
       db()->prepare("INSERT INTO students ($cols, created_at, updated_at) VALUES ($ph, ?, ?)")->execute([...array_values($d), now(), now()]);
       $nid = (int)db()->lastInsertId();
       audit('create', 'student', (string)$nid, $d['name']);
+      try { notify_new_student($d, $nid, $u); } catch (Throwable $t) { audit('new_student_mail_failed', 'student', (string)$nid, mb_substr($t->getMessage(), 0, 200)); }
       redirect('student.php?id=' . $nid . '&saved=1');
     }
   }
   $row = array_merge($row ?: [], $d);   // keep typed values on error
+  $row['status_note'] = $statusNote;
 }
 if (!empty($_GET['saved'])) $msg = 'נשמר.';
 if (!empty($_GET['m'])) $msg = mb_substr((string)$_GET['m'], 0, 300);
@@ -73,27 +103,44 @@ if ($id && can_see_ids()) { $q = db()->prepare('SELECT id, kind, orig_name, mime
 $val = fn($k) => $row[$k] ?? '';
 page_head($row ? $row['name'] : 'תלמידה חדשה');
 ?>
+<?php if ($row && $id): ?><div class="sub"><div class="in"><a href="students.php">‹ חזרה לתלמידות</a><b class="nm"><?= e($row['name']) ?></b><span class="mu">כיתה <?= e(trim($row['grade'] . ' ' . ($row['cls'] ?? ''))) ?></span><span class="gap"></span><span class="pill <?= e($row['status']) ?>"><?= e(STATUS[$row['status']] ?? $row['status']) ?></span></div></div><?php endif; ?>
 <h1><?= $row ? e($row['name']) : 'תלמידה חדשה' ?></h1>
+<?php if (!empty($row['archived_at'])) echo '<p class="aptn">התלמידה בארכיון (מאז ' . e(date('d/m/Y', strtotime((string)$row['archived_at']))) . '). כל הרשומות שלה נשמרו.' . ($isAdmin ? ' <a href="archive.php">לדף הארכיון</a>' : '') . '</p>'; ?>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <?php sec_open('details', 'פרטי תלמידה', trim(($row['grade'] ?? '') . ' ' . ($row['cls'] ?? '')) !== '' ? 'כיתה ' . trim(($row['grade'] ?? '') . ' ' . ($row['cls'] ?? '')) : '', '☺', ['details']); ?>
-<form method="post">
+<form method="post" class="dirty" autocomplete="off">
   <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>">
   <div class="fg">
   <?php foreach ($F as $k => [$lbl, $max, $sens]):
     if ($sens && !can_see_ids()) continue;
+    $lock = $ro || ($id && !$isAdmin && in_array($k, ADMIN_ONLY, true));
+    $dis = $lock ? ' disabled' : '';
     if ($k === 'grade') {
       echo '<label>' . e($lbl) . '<select name="grade"' . ($ro ? ' disabled' : '') . '><option value=""></option>';
       foreach (GRADES as $x) echo '<option' . ($val('grade') === $x ? ' selected' : '') . '>' . e($x) . '</option>';
       echo '</select></label>'; continue;
     }
-    echo '<label>' . e($lbl) . '<input name="' . $k . '" maxlength="' . $max . '" value="' . e($val($k)) . '"' . ($ro ? ' readonly' : '') . '></label>';
+    if ($k === 'hmo') {
+      $cur = (string)($val('hmo') ?: HMO_UNKNOWN);
+      $opts = [...HMO_LIST, HMO_UNKNOWN]; if (!in_array($cur, $opts, true)) $opts[] = $cur;
+      echo '<label>' . e($lbl) . '<select name="hmo"' . ($ro ? ' disabled' : '') . '>';
+      foreach ($opts as $x) echo '<option' . ($cur === $x ? ' selected' : '') . '>' . e($x) . '</option>';
+      echo '</select></label>'; continue;
+    }
+    $v = (string)$val($k); $attr = '';
+    if (in_array($k, ID_FIELDS, true)) $attr = ' inputmode="numeric" pattern="[0-9]{9}" data-digits="1" dir="ltr"';
+    elseif (in_array($k, PHONE_FIELDS, true)) { $v = fmt_phone($v); $attr = ' type="tel" inputmode="tel" dir="ltr"'; }
+    echo '<label>' . e($lbl) . '<input name="' . $k . '" maxlength="' . ($max > 9 && in_array($k, ID_FIELDS, true) ? 9 : $max) . '" value="' . e($v) . '"' . $attr . $dis . '></label>';
   endforeach; ?>
   <label>מצב הורים<select name="marital"<?= $ro ? ' disabled' : '' ?>><option value="married">נשואים</option><option value="divorced"<?= $val('marital') === 'divorced' ? ' selected' : '' ?>>גרושים</option></select></label>
-  <label>סטטוס<select name="status"<?= $ro ? ' disabled' : '' ?>><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . (($val('status') ?: 'active') === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
+  <label>סטטוס<select name="status" data-orig="<?= e($val('status') ?: 'active') ?>"<?= ($ro || !$isAdmin || !$id) ? ' disabled' : '' ?>><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . (($val('status') ?: 'active') === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
+  <?php if ($isAdmin && $id): ?><label class="wide" id="stnote"<?= (($val('status_note') ?? '') === '') ? ' hidden' : '' ?>>סיבת שינוי הסטטוס (חובה)<input name="status_note" maxlength="500" value="<?= e((string)($row['status_note'] ?? '')) ?>" placeholder="למשל: עברה למוסד אחר"></label><?php endif; ?>
   </div>
-  <?php if (!$ro): ?><button>שמירה</button><?php endif; ?>
-  <a class="btn sec" href="students.php">חזרה</a>
-  <?php if ($id && !valid_il_id((string)$val('idn')) && $val('idn') !== '' && can_see_ids()) echo '<p class="mu">שימו לב: מספר הזהות שהוזן לא עובר בדיקת תקינות.</p>'; ?>
+  <div class="acts">
+  <?php if (!$ro): ?><button class="sv" disabled>שמירה</button><?php endif; ?>
+  <a class="btn sec" href="<?= $id ? 'student.php?id=' . (int)$id : 'students.php' ?>">ביטול</a>
+  </div>
+  <?php if ($id && $val('idn') !== '' && !valid_il_id((string)$val('idn')) && can_see_ids()) echo '<p class="mu">שימו לב: מספר הזהות שהוזן לא עובר בדיקת תקינות.</p>'; ?>
 </form>
 <?php sec_close(); ?>
 <?php if ($id && in_array($u['role'], COLLECTION_ROLES, true)) notes_card([['id' => $id, 'name' => $row['name']]], 'student.php?id=' . $id); ?>
@@ -128,7 +175,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   </table></div>
   <?php else: ?><p class="mu">עדיין לא הועלו מסמכים.</p><?php endif; ?>
   <?php if (can_edit()): ?>
-  <form method="post" action="file_upload.php" enctype="multipart/form-data" style="margin-top:12px">
+  <form method="post" action="file_upload.php" enctype="multipart/form-data" class="mt">
     <?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>">
     <div class="bar">
       <label>סוג מסמך<select name="kind"><?php foreach (FILE_KINDS as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
@@ -140,12 +187,13 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <?php endif; ?>
 <?php sec_close(); ?>
 <?php endif; ?>
-<?php if ($id && $u['role'] === 'admin'): ?>
-<form method="post" class="card">
-  <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="delete">
-  <h2>מחיקה</h2>
-  <label><input type="checkbox" name="ok" value="1"> אני מאשרת למחוק את התלמידה לצמיתות</label>
-  <p><button class="dg">מחיקה</button></p>
+<?php if ($id && $isAdmin): ?>
+<form method="post" class="card arch">
+  <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="archive">
+  <h2>העברה לארכיון</h2>
+  <p class="mu">התלמידה תוסר מהרשימות, אבל כל הרשומות המקושרות (חיובים, תשלומים, הערות ומסמכים) נשמרות. אפשר להחזיר אותה מדף הארכיון.</p>
+  <label><input type="checkbox" name="ok" value="1"> אני מאשרת להעביר את התלמידה לארכיון</label>
+  <p><button class="dg" disabled>העברה לארכיון</button></p>
 </form>
 <?php endif;
 page_foot();

@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-function migration_files(): array { $f = glob(PRIV . '/migrations/*.sql') ?: []; sort($f); return $f; }
+function migration_files(): array { $f = array_merge(glob(PRIV . '/migrations/*.sql') ?: [], glob(PRIV . '/migrations/*.php') ?: []); usort($f, fn($a, $b) => strcmp(basename($a), basename($b))); return $f; }
 function migrations_pending(): bool {
   static $r = null; if ($r !== null) return $r;
   $files = migration_files();
@@ -19,7 +19,8 @@ function migrate(): array {
   foreach (migration_files() as $f) {
     $n = basename($f);
     if (in_array($n, $done, true)) continue;
-    foreach (array_filter(array_map('trim', explode(";\n", (string)file_get_contents($f)))) as $sql) $pdo->exec($sql);
+    if (str_ends_with($f, '.php')) { (require $f)($pdo); }
+    else foreach (array_filter(array_map('trim', explode(";\n", (string)file_get_contents($f)))) as $sql) $pdo->exec($sql);
     $pdo->prepare('INSERT INTO schema_migrations (name, applied_at) VALUES (?,?)')->execute([$n, now()]);
     $applied[] = $n;
   }

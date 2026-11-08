@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'bulk_cha
   else {
     $pdo = db(); $pdo->beginTransaction();
     try {
-      $rows = $pdo->query("SELECT f.id fid, s.grade FROM families f JOIN students s ON s.family_id = f.id AND s.status = 'active'")->fetchAll();
+      $rows = $pdo->query("SELECT f.id fid, s.grade FROM families f JOIN students s ON s.family_id = f.id AND s.status = 'active' AND s.archived_at IS NULL")->fetchAll();
       $per = [];
       foreach ($rows as $r) {
         $a = $mode === 'books' ? (BOOKS_BY_GRADE[$r['grade']] ?? 0) : (float)$amt;
@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'create_a
   else {
     $pdo = db(); $pdo->beginTransaction();
     try {
-      $rows = $pdo->query("SELECT id, name FROM students WHERE family_id IS NULL AND status = 'active' ORDER BY name")->fetchAll();
+      $rows = $pdo->query("SELECT id, name FROM students WHERE family_id IS NULL AND status = 'active' AND archived_at IS NULL ORDER BY name")->fetchAll();
       $fi = $pdo->prepare('INSERT INTO families (name, created_at, updated_at) VALUES (?,?,?)'); $su = $pdo->prepare('UPDATE students SET family_id = ? WHERE id = ? AND family_id IS NULL');
       foreach ($rows as $r) { $fi->execute([mb_substr($r['name'], 0, 120), now(), now()]); $su->execute([(int)$pdo->lastInsertId(), $r['id']]); }
       $pdo->commit();
@@ -57,7 +57,7 @@ if ($q !== '') { $w[] = '(f.name LIKE ? OR EXISTS (SELECT 1 FROM students s2 WHE
 if ($mm !== '' && isset(PAY_METHODS[$mm])) { $w[] = 'f.method = ?'; $a[] = $mm; }
 if ($kind === 'parents') $w[] = "f.payer_kind IN ('parents','father','mother')"; elseif ($kind === 'org') $w[] = "f.payer_kind NOT IN ('parents','father','mother')";
 $sql = 'SELECT f.id, f.name, f.monthly, f.months, f.method, f.collect_day, f.discount_note, f.payer_kind, p.name payer, '
-     . "(SELECT GROUP_CONCAT(CONCAT(s.name, ' (', s.grade, ')') ORDER BY s.name SEPARATOR ', ') FROM students s WHERE s.family_id = f.id) names "
+     . "(SELECT GROUP_CONCAT(CONCAT(s.name, ' (', s.grade, ')') ORDER BY s.name SEPARATOR ', ') FROM students s WHERE s.family_id = f.id AND s.archived_at IS NULL) names "
      . 'FROM families f LEFT JOIN payers p ON p.id = f.payer_id ' . ($w ? 'WHERE ' . implode(' AND ', $w) : '') . ' ORDER BY f.name';
 $st = db()->prepare($sql); $st->execute($a); $fams = $st->fetchAll();
 $data = collection_data(array_map(fn($r) => (int)$r['id'], $fams));
@@ -83,11 +83,11 @@ if (isset($_GET['export'])) {
   foreach ($fams as $r) { $d = $data[(int)$r['id']]; $ct = $contacts[(int)$r['id']] ?? [];
     fputcsv($o, [csv_safe($r['name']), csv_safe((string)$r['names']), $r['monthly'], $r['months'], $d['tuition'], $d['charges'], $d['paid'], $d['balance'], method_label($r['method']), $r['collect_day'], csv_safe(payer_label($r)), csv_safe($r['discount_note']),
       $arr[(int)$r['id']]['behind'], $arr[(int)$r['id']]['late'], round($d['tuition'] - ($d['paid'] - $d['cpaid']), 2), round($d['charges'] - $d['cpaid'], 2),
-      csv_safe($ct['f'][1] ?? ''), csv_safe($ct['f'][2] ?? ''), csv_safe($ct['m'][1] ?? ''), csv_safe($ct['m'][2] ?? '')], ',', '"', ''); }
+      csv_safe($ct['f'][1] ?? ''), csv_safe(fmt_phone((string)($ct['f'][2] ?? ''))), csv_safe($ct['m'][1] ?? ''), csv_safe(fmt_phone((string)($ct['m'][2] ?? '')))], ',', '"', ''); }
   exit;
 }
 $payers = db()->query('SELECT p.id, p.name, (SELECT COUNT(*) FROM families WHERE payer_id = p.id) n FROM payers p ORDER BY p.name')->fetchAll();
-$nofile = db()->query("SELECT id, name, grade FROM students WHERE family_id IS NULL AND status = 'active' ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), name")->fetchAll();
+$nofile = db()->query("SELECT id, name, grade FROM students WHERE family_id IS NULL AND status = 'active' AND archived_at IS NULL ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), name")->fetchAll();
 page_head('גבייה');
 ?>
 <h1>גבייה <span class="mu">(<?= count($fams) ?> תיקים)</span></h1>
@@ -136,7 +136,7 @@ $badge = function (array $x): string {
     <div class="mcs"><?= month_cells($d) ?></div>
     <div class="tels">
       <?php foreach (['f', 'm'] as $k) if (isset($ct[$k])): [$lab, $nm, $ph] = $ct[$k]; ?>
-        <a class="tel" href="<?= e(tel_href($ph)) ?>"><?= $phoneIco ?><span><b><?= e($lab) ?></b><?= $nm !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e($ph) ?></bdi></a>
+        <a class="tel" href="<?= e(tel_href($ph)) ?>"><?= $phoneIco ?><span><b><?= e($lab) ?></b><?= $nm !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e(fmt_phone($ph)) ?></bdi></a>
       <?php endif; if (!$ct) echo '<span class="mu">אין מספר טלפון של ההורים בכרטיס התלמידה.</span>'; ?>
     </div>
   </div>
@@ -166,7 +166,7 @@ $badge = function (array $x): string {
       </dl>
       <div class="tels">
         <?php foreach (['f', 'm'] as $k) if (isset($ct[$k])): [$lab, $nm, $ph] = $ct[$k]; ?>
-          <a class="tel" href="<?= e(tel_href($ph)) ?>"><?= $phoneIco ?><span><b><?= e($lab) ?></b><?= $nm !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e($ph) ?></bdi></a>
+          <a class="tel" href="<?= e(tel_href($ph)) ?>"><?= $phoneIco ?><span><b><?= e($lab) ?></b><?= $nm !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e(fmt_phone($ph)) ?></bdi></a>
         <?php endif; ?>
       </div>
       <div class="acts"><a class="btn" href="family.php?id=<?= (int)$r['id'] ?>">לתיק הגבייה</a><a class="btn sec" href="family.php?id=<?= (int)$r['id'] ?>&open=pay#s-pay">רישום תשלום</a></div>

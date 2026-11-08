@@ -110,7 +110,7 @@ $payers = db()->query('SELECT id, name FROM payers ORDER BY name')->fetchAll();
 $divorced = (bool)array_filter($studs, fn($x) => ($x['marital'] ?? '') === 'divorced');
 $ch = db()->prepare('SELECT c.*, (SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.charge_id = c.id AND p.voided_at IS NULL) paid FROM charges c WHERE c.family_id = ? ORDER BY c.id'); $ch->execute([$id]); $charges = $ch->fetchAll();
 $py = db()->prepare('SELECT p.*, u.display_name who FROM payments p LEFT JOIN users u ON u.id = p.created_by WHERE p.family_id = ? ORDER BY p.paid_on DESC, p.id DESC'); $py->execute([$id]); $pays = $py->fetchAll();
-$free = db()->query('SELECT id, name, grade FROM students WHERE family_id IS NULL AND status = \'active\' ORDER BY name')->fetchAll();
+$free = db()->query('SELECT id, name, grade FROM students WHERE family_id IS NULL AND status = \'active\' AND archived_at IS NULL ORDER BY name')->fetchAll();
 $chargeNames = array_column($charges, 'label', 'id');
 if ($err && $_SERVER['REQUEST_METHOD'] === 'POST') $_GET['open'] = ['add_payment' => 'pay', 'void_payment' => 'pay', 'save' => 'set', 'add_charge' => 'chg', 'void_charge' => 'chg', 'add_student' => 'stu', 'remove_student' => 'stu'][$_POST['act'] ?? ''] ?? 'notes';
 page_head($fam['name']);
@@ -171,7 +171,7 @@ page_head($fam['name']);
   <div class="sc"><table><tr><th>שם</th><th>כיתה</th><th>אב</th><th>אם</th><th></th></tr>
   <?php foreach ($studs as $s): ?>
     <tr><td><a href="student.php?id=<?= (int)$s['id'] ?>"><?= e($s['name']) ?></a></td><td><?= e($s['grade']) ?></td>
-    <td><?= e(trim($s['f_name'] . ' ' . $s['f_phone'])) ?></td><td><?= e(trim($s['m_name'] . ' ' . $s['m_phone'])) ?></td>
+    <td><?= e(trim($s['f_name'] . ' ' . fmt_phone((string)$s['f_phone']))) ?></td><td><?= e(trim($s['m_name'] . ' ' . fmt_phone((string)$s['m_phone']))) ?></td>
     <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="remove_student"><input type="hidden" name="student_id" value="<?= (int)$s['id'] ?>"><button class="sec">הסרה מהתיק</button></form></td></tr>
   <?php endforeach; if (!$studs) echo '<tr><td colspan="5" class="mu">אין תלמידות בתיק.</td></tr>'; ?>
   </table></div>

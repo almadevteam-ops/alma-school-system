@@ -106,6 +106,8 @@ function import_parse(string $raw, array $existing): array {
     if (!in_array($d['grade'], GRADES, true)) $errs[] = 'כיתה לא מוכרת (' . ($d['grade'] === '' ? 'ריקה' : $d['grade']) . ')';
     if ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $errs[] = 'אימייל לא תקין';
     foreach (IMPORT_MAXLEN as $k => $mx) if (mb_strlen($d[$k]) > $mx) $errs[] = IMPORT_FIELDS[$k] . ' ארוך מדי';
+    foreach (['phone', 'f_phone', 'm_phone'] as $k) if ($d[$k] !== '') { $d[$k] = norm_phone($d[$k]); if (!phone_ok($d[$k])) $warns[] = IMPORT_FIELDS[$k] . ' לא נראה כמספר תקין'; }
+    $d['hmo'] = hmo_norm($d['hmo']);
     foreach (['idn' => 'ת״ז', 'f_id' => 'ת״ז האב', 'm_id' => 'ת״ז האם'] as $k => $lbl) {
       if ($d[$k] === '') continue;
       $d[$k] = import_id_norm($d[$k]);

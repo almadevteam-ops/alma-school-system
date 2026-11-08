@@ -1,23 +1,23 @@
 <?php
 require __DIR__ . '/../../private/lib/bootstrap.php';
 $me = require_role(['admin']);
-$err = ''; $msg = '';
+$err = ''; $msg = ''; $errf = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? '');
   if ($act === 'create') {
     $un = trim((string)($_POST['username'] ?? '')); $nm = mb_substr(trim((string)($_POST['name'] ?? '')), 0, 100);
     $role = isset(ROLES[$_POST['role'] ?? '']) ? $_POST['role'] : 'secretary'; $pw = (string)($_POST['pw'] ?? '');
-    if (!preg_match('/^[A-Za-z0-9._@-]{3,60}$/', $un)) $err = 'שם משתמש: 3–60 תווים באנגלית, ספרות או . _ @ -';
-    elseif ($nm === '') $err = 'נא למלא שם תצוגה.';
-    elseif ($e = pw_ok($pw)) $err = $e;
-    elseif (($_POST['method'] ?? '') === 'email' && !filter_var(trim((string)($_POST['mail'] ?? '')), FILTER_VALIDATE_EMAIL)) $err = 'לאימות במייל נדרשת כתובת מייל תקינה.';
+    if (!preg_match('/^[A-Za-z0-9._@-]{3,60}$/', $un)) { $err = 'שם משתמש: 3–60 תווים באנגלית, ספרות או . _ @ -'; $errf = 'username'; }
+    elseif ($nm === '') { $err = 'נא למלא שם תצוגה.'; $errf = 'name'; }
+    elseif ($e = pw_ok($pw)) { $err = $e; $errf = 'pw'; }
+    elseif (($_POST['method'] ?? '') === 'email' && !filter_var(trim((string)($_POST['mail'] ?? '')), FILTER_VALIDATE_EMAIL)) { $err = 'לאימות במייל נדרשת כתובת מייל תקינה.'; $errf = 'mail'; }
     else {
       $byMail = ($_POST['method'] ?? '') === 'email'; $mail = $byMail ? mb_substr(trim((string)$_POST['mail']), 0, 150) : '';
       try {
         db()->prepare('INSERT INTO users (username, display_name, pass_hash, role, created_at, mfa_method, mfa_email, totp_enabled) VALUES (?,?,?,?,?,?,?,?)')->execute([$un, $nm, hash_pw($pw), $role, now(), $byMail ? 'email' : 'app', $mail, $byMail ? 1 : 0]);
         audit('user_create', 'user', $un, 'תפקיד: ' . $role . ', אימות: ' . ($byMail ? 'מייל' : 'אפליקציה')); $msg = 'המשתמשת נוצרה.' . ($byMail ? ' בכניסה היא תקבל קוד במייל.' : ' בכניסה הראשונה היא תגדיר אפליקציית אימות.');
-      } catch (PDOException $x) { $err = 'שם המשתמש כבר קיים.'; }
+      } catch (PDOException $x) { $err = 'שם המשתמש כבר קיים.'; $errf = 'username'; }
     }
   } elseif ($act === 'toggle' || $act === 'reset' || $act === 'role' || $act === 'reset2fa' || $act === 'mfa') {
     $uid = (int)($_POST['uid'] ?? 0);
@@ -54,6 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 }
+$kp = ($err !== '' && ($_POST['act'] ?? '') === 'create') ? $_POST : [];
+$kv = fn(string $k) => e((string)($kp[$k] ?? ''));
+$bad = fn(string $k) => $errf === $k ? ' class="bad" aria-invalid="true"' : '';
 $short = fn(string $l): string => trim((string)preg_replace('/\s*\(.*$/u', '', $l));
 $users = db()->query('SELECT id, username, display_name, role, active, last_login, totp_enabled, mfa_method, mfa_email FROM users ORDER BY id')->fetchAll();
 page_head('משתמשים');
@@ -95,12 +98,12 @@ page_head('משתמשים');
 <form method="post" autocomplete="off">
   <?= csrf_field() ?><input type="hidden" name="act" value="create">
   <div class="fg">
-    <label>שם תצוגה<input name="name" required></label>
-    <label>שם משתמש (אנגלית)<input name="username" required dir="ltr"></label>
-    <label>סיסמה (10+ תווים, אותיות וספרות)<input name="pw" type="password" required autocomplete="new-password"></label>
-    <label>תפקיד<select name="role"><?php foreach (ROLES as $k => $v) echo '<option value="' . $k . '">' . e($short($v)) . '</option>'; ?></select></label>
-    <label>שיטת אימות בכניסה<select name="method"><option value="app">אפליקציית אימות בטלפון</option><option value="email">קוד שנשלח למייל</option></select></label>
-    <label>כתובת מייל (רק לאימות במייל)<input type="email" name="mail" dir="ltr" placeholder="name@gmail.com"></label>
+    <label>שם תצוגה<input name="name" required value="<?= $kv('name') ?>"<?= $bad('name') ?>></label>
+    <label>שם משתמש (אנגלית)<input name="username" required dir="ltr" value="<?= $kv('username') ?>"<?= $bad('username') ?>></label>
+    <label<?= $errf === 'pw' ? ' class="bad-l"' : '' ?>>סיסמה (10+ תווים, אותיות וספרות)<input name="pw" type="password" required autocomplete="new-password"<?= $bad('pw') ?>></label>
+    <label>תפקיד<select name="role"><?php foreach (ROLES as $k => $v) echo '<option value="' . $k . '"' . (($kp['role'] ?? '') === $k ? ' selected' : '') . '>' . e($short($v)) . '</option>'; ?></select></label>
+    <label>שיטת אימות בכניסה<select name="method"><option value="app">אפליקציית אימות בטלפון</option><option value="email"<?= ($kp['method'] ?? '') === 'email' ? ' selected' : '' ?>>קוד שנשלח למייל</option></select></label>
+    <label>כתובת מייל (רק לאימות במייל)<input type="email" name="mail" dir="ltr" placeholder="name@gmail.com" value="<?= $kv('mail') ?>"<?= $bad('mail') ?>></label>
   </div>
   <p><button>הוספת משתמשת</button></p>
 </form>

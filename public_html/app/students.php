@@ -7,14 +7,14 @@ $c = trim((string)($_GET['c'] ?? ''));
 $s = (string)($_GET['s'] ?? 'active');
 $pg = max(1, (int)($_GET['p'] ?? 1));
 $per = 50;
-$w = []; $a = [];
+$w = ['archived_at IS NULL']; $a = [];
 if ($q !== '') { $w[] = '(name LIKE ? OR idn LIKE ? OR phone LIKE ? OR f_phone LIKE ? OR m_phone LIKE ?)'; $l = '%' . $q . '%'; array_push($a, $l, $l, $l, $l, $l); }
 if (in_array($g, GRADES, true)) { $w[] = 'grade = ?'; $a[] = $g; }
 if ($c !== '') { $w[] = 'city LIKE ?'; $a[] = '%' . $c . '%'; }
 if (isset(STATUS[$s])) { $w[] = 'status = ?'; $a[] = $s; }
 $where = $w ? 'WHERE ' . implode(' AND ', $w) : '';
 $st = db()->prepare("SELECT COUNT(*) FROM students $where"); $st->execute($a); $total = (int)$st->fetchColumn();
-$st = db()->prepare("SELECT id, name, grade, cls, idn, city, addr, email, phone, f_name, f_phone, m_name, m_phone, status, family_id FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
+$st = db()->prepare("SELECT id, name, grade, cls, idn, city, addr, email, phone, f_name, f_phone, m_name, m_phone, status, family_id, (SELECT f.payer_kind FROM families f WHERE f.id = students.family_id) pk, (SELECT p.name FROM families f JOIN payers p ON p.id = f.payer_id WHERE f.id = students.family_id) payer_name FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
 $st->execute($a); $rows = $st->fetchAll();
 function mask(string $v): string { return $v === '' ? '' : str_repeat('•', max(0, mb_strlen($v) - 3)) . mb_substr($v, -3); }
 page_head('תלמידות');
@@ -37,10 +37,10 @@ page_head('תלמידות');
   <details class="uw">
     <summary class="ur">
       <span class="c idx"><?= $off0 + $i + 1 ?></span>
-      <span class="c nm"><b><?= e($r['name']) ?></b></span>
+      <span class="c nm"><b><?= e($r['name']) ?></b><?= ($r['pk'] ?? '') === 'org' ? ' <span class="apt" title="' . e('משלם: ' . ($r['payer_name'] ?? '')) . '">בדירה</span>' : '' ?></span>
       <span class="c" data-l="כיתה"><?= e($r['grade'] . ($r['cls'] && $r['cls'] !== $r['grade'] ? ' (' . $r['cls'] . ')' : '')) ?></span>
       <span class="c" data-l="עיר"><?= $r['city'] !== '' ? e($r['city']) : '<span class="mu">—</span>' ?></span>
-      <span class="c" data-l="טלפון"><?= $r['phone'] !== '' ? '<bdi dir="ltr">' . e($r['phone']) . '</bdi>' : '<span class="mu">—</span>' ?></span>
+      <span class="c" data-l="טלפון"><?= $r['phone'] !== '' ? '<bdi dir="ltr">' . e(fmt_phone($r['phone'])) . '</bdi>' : '<span class="mu">—</span>' ?></span>
       <span class="c stt"><span class="pill <?= e($r['status']) ?>"><?= e(STATUS[$r['status']] ?? $r['status']) ?></span></span>
       <span class="chev" aria-hidden="true">⌄</span>
     </summary>
@@ -50,9 +50,10 @@ page_head('תלמידות');
         <div><dt>כתובת</dt><dd><?= $r['addr'] !== '' || $r['city'] !== '' ? e(trim($r['addr'] . ', ' . $r['city'], ' ,')) : '<span class="mu">—</span>' ?></dd></div>
         <div><dt>מייל</dt><dd><?= $r['email'] !== '' ? '<bdi dir="ltr">' . e($r['email']) . '</bdi>' : '<span class="mu">—</span>' ?></dd></div>
       </dl>
+      <?php if (($r['pk'] ?? '') === 'org'): ?><p class="aptn">תלמידה בדירה: התשלום על ידי <?= e($r['payer_name'] ?: 'העמותה') ?>, אין צורך להתקשר להורים בעניין גבייה.</p><?php endif; ?>
       <div class="tels">
         <?php foreach ([['אבא', $r['f_name'], $r['f_phone']], ['אמא', $r['m_name'], $r['m_phone']]] as [$lab, $nm, $ph]) if (trim($ph) !== ''): ?>
-          <a class="tel" href="<?= e(tel_href($ph)) ?>"><svg class="ni" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg><span><b><?= e($lab) ?></b><?= trim($nm) !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e($ph) ?></bdi></a>
+          <a class="tel" href="<?= e(tel_href($ph)) ?>"><svg class="ni" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg><span><b><?= e($lab) ?></b><?= trim($nm) !== '' ? ' ' . e($nm) : '' ?></span><bdi dir="ltr"><?= e(fmt_phone($ph)) ?></bdi></a>
         <?php endif; ?>
       </div>
       <div class="acts">

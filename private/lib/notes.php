@@ -2,7 +2,7 @@
 declare(strict_types=1);
 // יומן הערות לתלמידה: הערות נוספות בלבד (אין עריכה ואין מחיקה), עם תאריך, כותבת וקבצים מצורפים מוצפנים.
 const NOTE_MAX_FILES = 5;
-const NOTE_MAX_LEN = 5000;
+const NOTE_MAX_LEN = 2000;
 
 function note_files_store(array $files, int $noteId): array {
   $ok = 0; $errs = [];
@@ -44,13 +44,13 @@ function notes_card(array $studs, string $back): void {
     foreach (db()->query("SELECT id, note_id, orig_name, size FROM note_files WHERE note_id IN ($nid) ORDER BY id")->fetchAll() as $f) $files[(int)$f['note_id']][] = $f; }
   ?>
 <?php sec_open('notes', 'הערות ושיחות', count($notes) . ' הערות' . ($notes ? ' · האחרונה: ' . date('d/m/Y', strtotime((string)$notes[0]['created_at'])) . ' · ' . ($notes[0]['author_name'] ?: '') : ''), '✎', ['notes']); ?>
-  <form method="post" action="note_add.php" enctype="multipart/form-data" class="notef">
+  <form method="post" action="note_add.php" enctype="multipart/form-data" class="notef nform">
     <?= csrf_field() ?><input type="hidden" name="back" value="<?= e($back) ?>">
     <?php if (count($studs) > 1): ?><label class="mu">על איזו תלמידה?<select name="student_id"><?php foreach ($studs as $s) echo '<option value="' . (int)$s['id'] . '">' . e($s['name']) . '</option>'; ?></select></label>
     <?php else: ?><input type="hidden" name="student_id" value="<?= (int)$studs[0]['id'] ?>"><?php endif; ?>
-    <label class="mu">הערה חדשה (למשל: סיכום שיחת טלפון)<textarea name="body" rows="3" class="w100" maxlength="<?= NOTE_MAX_LEN ?>" required></textarea></label>
+    <label class="mu">הערה חדשה (למשל: סיכום שיחת טלפון)<textarea name="body" rows="3" class="w100" maxlength="<?= NOTE_MAX_LEN ?>" required></textarea><span class="mu cnt" data-max="<?= NOTE_MAX_LEN ?>">0 / <?= NOTE_MAX_LEN ?> תווים</span></label>
     <label class="mu">צילומי מסך / קבצים (JPG, PNG, PDF; עד <?= NOTE_MAX_FILES ?>, כל אחד עד 10MB)<input type="file" name="f[]" multiple accept="image/jpeg,image/png,image/webp,application/pdf"></label>
-    <p><button>שמירת הערה</button> <span class="mu">הערה שנשמרה לא ניתנת לעריכה או למחיקה. נשמרים התאריך ושם הכותבת.</span></p>
+    <p><button class="ns" disabled>שמירת הערה</button> <span class="mu">הערה שנשמרה לא ניתנת לעריכה או למחיקה. נשמרים התאריך ושם הכותבת.</span></p>
   </form>
   <?php if (!$notes) echo '<p class="mu">אין עדיין הערות.</p>'; foreach ($notes as $n): ?>
   <div class="note<?= $n['legacy'] ? ' old' : '' ?>">

@@ -10,7 +10,7 @@ $back = (string)($_POST['back'] ?? '');
 $back = preg_match('/^(student|family)\.php\?id=\d+$/', $back) ? $back : 'student.php?id=' . $sid;
 $body = trim((string)($_POST['body'] ?? ''));
 if ($body === '') redirect($back . '&open=notes&e=' . rawurlencode('נא לכתוב את ההערה.'));
-$body = mb_substr($body, 0, NOTE_MAX_LEN);
+if (mb_strlen($body) > NOTE_MAX_LEN) redirect($back . '&open=notes&e=' . rawurlencode('ההערה ארוכה מדי: עד ' . NOTE_MAX_LEN . ' תווים (כתבת ' . mb_strlen($body) . ').'));
 $pdo = db();
 $pdo->prepare('INSERT INTO student_notes (student_id, body, author_id, author_name, created_at) VALUES (?,?,?,?,?)')->execute([$sid, $body, $u['id'], mb_substr((string)($u['name'] ?: $u['username']), 0, 100), now()]);
 $nid = (int)$pdo->lastInsertId();

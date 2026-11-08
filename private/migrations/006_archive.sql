@@ -1,0 +1,1 @@
+ALTER TABLE students ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by VARCHAR(100) NOT NULL DEFAULT '', ADD INDEX (archived_at)
