@@ -49,25 +49,28 @@ function geo_check(string $city, string $addr, bool $checkCity, bool $checkAddr)
 }
 /** טוענת קובץ CSV של רחובות (שם ישוב + שם רחוב) ומחליפה את הספרייה. מחזירה [ערים, רחובות] או מחרוזת שגיאה. */
 function geo_import(string $path) {
+  @set_time_limit(300); @ini_set('memory_limit', '512M');
   $raw = (string)file_get_contents($path);
   if ($raw === '') return 'הקובץ ריק.';
   if (!mb_check_encoding($raw, 'UTF-8')) $raw = (string)@iconv('Windows-1255', 'UTF-8//IGNORE', $raw);
   $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw) ?? $raw;
-  $fh = fopen('php://temp', 'r+'); fwrite($fh, $raw); rewind($fh);
+  $fh = fopen('php://temp', 'r+'); fwrite($fh, $raw); unset($raw); rewind($fh);
   $first = (string)fgets($fh); rewind($fh);
   $delim = substr_count($first, "\t") > substr_count($first, ',') ? "\t" : (substr_count($first, ';') > substr_count($first, ',') ? ';' : ',');
   $head = fgetcsv($fh, 0, $delim, '"', '');
   if (!$head) return 'לא נמצאה שורת כותרות.';
-  $ci = $si = null;
+  $ci = $si = $sti = null;
   foreach ($head as $i => $h) {
     $n = str_replace(['_', '-', ' '], '', geo_norm((string)$h));
-    if (str_contains($n, 'סמל') || str_contains($n, 'קוד')) continue;
-    if ($ci === null && (str_contains($n, 'ישוב') || str_contains($n, 'יישוב') || str_contains($n, 'עיר') || $n === 'city')) $ci = $i;
-    elseif ($si === null && (str_contains($n, 'רחוב') || $n === 'street')) $si = $i;
+    if (str_contains($n, 'status') || str_contains($n, 'סטטוס')) { $sti ??= $i; continue; }
+    if (str_contains($n, 'סמל') || str_contains($n, 'קוד') || str_contains($n, 'code')) continue;
+    if ($ci === null && (in_array($n, ['cityname', 'city'], true) || str_contains($n, 'ישוב') || str_contains($n, 'יישוב') || str_contains($n, 'עיר'))) $ci = $i;
+    elseif ($si === null && (in_array($n, ['streetname', 'street'], true) || str_contains($n, 'רחוב'))) $si = $i;
   }
   if ($ci === null || $si === null) return 'לא זוהו עמודות "שם ישוב" ו"שם רחוב" בשורת הכותרות (' . implode(', ', array_map('trim', $head)) . ').';
   $pairs = [];
   while (($r = fgetcsv($fh, 0, $delim, '"', '')) !== false) {
+    if ($sti !== null) { $stt = geo_norm((string)($r[$sti] ?? '')); if ($stt !== '' && $stt !== 'official' && $stt !== 'רשמי') continue; }   // שמות נרדפים (synonym) לא נטענים
     $c = trim(preg_replace('/\s+/u', ' ', (string)($r[$ci] ?? '')) ?? ''); $s = trim(preg_replace('/\s+/u', ' ', (string)($r[$si] ?? '')) ?? '');
     if ($c === '' || $s === '' || mb_strlen($c) > 80 || mb_strlen($s) > 100) continue;
     $pairs[$c][$s] = true;
@@ -77,9 +80,16 @@ function geo_import(string $path) {
   $pdo = db(); $pdo->beginTransaction();
   try {
     $pdo->exec('DELETE FROM geo_streets'); $pdo->exec('DELETE FROM geo_cities');
-    $ic = $pdo->prepare('INSERT INTO geo_cities (name) VALUES (?)'); $is = $pdo->prepare('INSERT IGNORE INTO geo_streets (city_id, name) VALUES (?, ?)');
+    $ic = $pdo->prepare('INSERT INTO geo_cities (name) VALUES (?)');
     $nc = 0; $ns = 0;
-    foreach ($pairs as $c => $ss) { $ic->execute([$c]); $cid = (int)$pdo->lastInsertId(); $nc++; foreach ($ss as $s => $_) { $is->execute([$cid, (string)$s]); $ns++; } }
+    foreach ($pairs as $c => $ss) {
+      $ic->execute([$c]); $cid = (int)$pdo->lastInsertId(); $nc++;
+      foreach (array_chunk(array_keys($ss), 400) as $chunk) {
+        $pdo->prepare('INSERT IGNORE INTO geo_streets (city_id, name) VALUES ' . implode(',', array_fill(0, count($chunk), '(?, ?)')))
+            ->execute(array_merge(...array_map(fn($x) => [$cid, (string)$x], $chunk)));
+        $ns += count($chunk);
+      }
+    }
     $pdo->commit();
   } catch (Throwable $t) { $pdo->rollBack(); throw $t; }
   return [$nc, $ns];
