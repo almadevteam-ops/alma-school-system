@@ -28,6 +28,7 @@ set_exception_handler(function (Throwable $t) {
 require_once __DIR__ . '/crypto.php';
 require_once __DIR__ . '/valid.php';
 require_once __DIR__ . '/geo.php';
+require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/totp.php';
 require_once __DIR__ . '/migrate.php';
 require_once __DIR__ . '/files.php';
@@ -190,7 +191,7 @@ function page_head(string $title, bool $nav = true): void {
     foreach (['students.php' => 'תלמידות', 'collection.php' => 'גבייה', 'security.php' => 'אבטחה'] as $f => $l)
       echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . ' title="' . e($l) . '">' . $ic($icons[$f]) . '<span>' . e($l) . '</span></a>';
     if ($u['role'] === 'admin') {
-      $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'backups.php' => 'גיבויים', 'archive.php' => 'ארכיון', 'geo.php' => 'ערים ורחובות', 'release_notes.php' => 'מה חדש', 'health.php' => 'בדיקת מערכת'];
+      $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'backups.php' => 'גיבויים', 'archive.php' => 'ארכיון', 'geo.php' => 'ערים ורחובות', 'settings.php' => 'הגדרות', 'release_notes.php' => 'מה חדש', 'health.php' => 'בדיקת מערכת'];
       echo '<details class="menu' . (isset($adm[$on]) ? ' on' : '') . '"><summary title="ניהול">' . $ic($icons['admin']) . '<span>ניהול</span></summary><div class="dd">';
       foreach ($adm as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';
       echo '</div></details>';

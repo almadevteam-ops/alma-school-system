@@ -25,7 +25,7 @@ if ($id) {
 }
 /** שולחת מייל לצוות כשנוצרת תלמידה חדשה. הנמענים ב-config: new_student_notify (כתובת או כמה כתובות מופרדות בפסיק). */
 function notify_new_student(array $d, int $nid, array $by): void {
-  $to = array_filter(array_map('trim', explode(',', (string)cfg('new_student_notify', ''))));
+  $to = new_student_recipients();
   if (!$to) return;
   $link = 'https://' . (string)cfg('host', 'alma-school.co.il') . '/app/student.php?id=' . $nid;
   $lines = ['נוספה תלמידה חדשה למערכת.', '', 'שם: ' . $d['name'], 'כיתה: ' . $d['grade'] . ($d['cls'] !== '' ? ' (' . $d['cls'] . ')' : ''),
