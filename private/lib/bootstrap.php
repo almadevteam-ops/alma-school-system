@@ -30,6 +30,7 @@ require_once __DIR__ . '/valid.php';
 require_once __DIR__ . '/geo.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/stu_extra.php';
+require_once __DIR__ . '/income.php';
 require_once __DIR__ . '/notify.php';
 require_once __DIR__ . '/totp.php';
 require_once __DIR__ . '/migrate.php';
@@ -180,7 +181,7 @@ function page_head(string $title, bool $nav = true): void {
      . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"><script src="/app/assets/app.js?v=' . asset_v('app.js') . '" defer></script></head><body>';
   if ($nav && ($u = user())) {
     $cur = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
-    $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'payments_import.php' => 'collection.php', 'monthly.php' => 'collection.php', 'charges.php' => 'collection.php', 'gad.php' => 'collection.php'];
+    $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'payments_import.php' => 'collection.php', 'monthly.php' => 'collection.php', 'charges.php' => 'collection.php', 'gad.php' => 'collection.php', 'income_import.php' => 'collection.php'];
     $on = $alias[$cur] ?? $cur;
     $ic = fn(string $d) => '<svg class="ni" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $d . '</svg>';
     $icons = [

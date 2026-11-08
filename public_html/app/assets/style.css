@@ -215,3 +215,5 @@ input.locked{background:#efecee;color:#8a8389;cursor:not-allowed}
 .mset{margin-top:14px;align-items:flex-end}
 .ced{display:inline-block;margin-inline-end:6px}.ced>summary{cursor:pointer;list-style:none}.ced[open]{display:block;margin-bottom:8px}
 .hero .mset label{color:#eadfe8}.hero>p.mu{color:#d9cdd6}.hero .mset select{min-width:150px}
+
+.sc tr.unm td{background:#fdf2f2}.fam{min-width:240px}

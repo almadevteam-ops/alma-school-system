@@ -100,7 +100,7 @@ page_head('גבייה');
   <div class="tile p"><span class="mu">יתרה לגבייה (כולל מה שעוד לא הגיע מועדו)</span><b class="er"><?= e(money($T['balance'])) ?></b></div>
 </div>
 <?php $qs = fn(array $o) => http_build_query(array_merge(['q' => $q, 'f' => $f, 'm' => $mm, 'k' => $kind, 'min' => $min ?: '', 's' => $sort, 'v' => $view], $o)); ?>
-<p class="subnav"><a class="btn sec" href="monthly.php">סיכום חודשי</a> <a class="btn sec" href="charges.php">גביות חד־פעמיות</a> <a class="btn sec" href="gad.php">מורשת גד (דירות)</a><?php if (pay_url() !== '') echo ' <a class="btn" href="' . e(pay_url()) . '" target="_blank" rel="noopener">💳 תשלום מאובטח</a>'; ?></p>
+<p class="subnav"><a class="btn sec" href="monthly.php">סיכום חודשי</a> <a class="btn sec" href="charges.php">גביות חד־פעמיות</a> <a class="btn sec" href="gad.php">מורשת גד (דירות)</a> <?php if (in_array($u['role'], ['admin', 'finance'], true)) echo '<a class="btn sec" href="income_import.php">העלאת דוח הכנסות</a>'; ?><?php if (pay_url() !== '') echo ' <a class="btn" href="' . e(pay_url()) . '" target="_blank" rel="noopener">💳 תשלום מאובטח</a>'; ?></p>
 <div class="seg" role="tablist">
   <a href="collection.php?<?= e($qs(['v' => 'table'])) ?>" class="<?= $view === 'table' ? 'on' : '' ?>">☰ טבלה</a>
   <a href="collection.php?<?= e($qs(['v' => 'calls', 's' => $view === 'calls' ? $sort : 'late', 'f' => $f === 'all' ? 'late' : $f])) ?>" class="<?= $view === 'calls' ? 'on' : '' ?>">☎ רשימת התקשרות</a>
