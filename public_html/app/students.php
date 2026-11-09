@@ -8,7 +8,7 @@ $s = (string)($_GET['s'] ?? 'active');
 $x = (string)($_GET['x'] ?? '');
 const XF = ['apt' => 'בדירה', 'vaada' => 'עברה ועדה', 's07' => 'מוגדרת 07', 'disc' => 'הנחה', 'pend' => 'הנחה ממתינה', 'allergy' => 'יש רגישות'];
 $pg = max(1, (int)($_GET['p'] ?? 1));
-$per = 50;
+$per = 100;
 $w = ['archived_at IS NULL']; $a = [];
 if ($q !== '') { $w[] = '(name LIKE ? OR idn LIKE ? OR phone LIKE ? OR f_phone LIKE ? OR m_phone LIKE ?)'; $l = '%' . $q . '%'; array_push($a, $l, $l, $l, $l, $l); }
 if (in_array($g, GRADES, true)) { $w[] = 'grade = ?'; $a[] = $g; }
@@ -22,25 +22,7 @@ $st = db()->prepare("SELECT COUNT(*) FROM students $where"); $st->execute($a); $
 $st = db()->prepare("SELECT id, name, grade, cls, is_apt, vaada, s07, allergy, disc_on, disc_status, idn, city, addr, house_no, email, phone, f_name, f_phone, m_name, m_phone, status, family_id, (SELECT f.payer_kind FROM families f WHERE f.id = students.family_id) pk, (SELECT p.name FROM families f JOIN payers p ON p.id = f.payer_id WHERE f.id = students.family_id) payer_name FROM students $where ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name LIMIT $per OFFSET " . (($pg - 1) * $per));
 $st->execute($a); $rows = $st->fetchAll();
 function mask(string $v): string { return $v === '' ? '' : str_repeat('•', max(0, mb_strlen($v) - 3)) . mb_substr($v, -3); }
-page_head('תלמידות');
-?>
-<h1>תלמידות <span class="mu">(<?= $total ?> תוצאות)</span></h1>
-<?php if (can_edit()) { $pc = (int)db()->query("SELECT COUNT(*) FROM students WHERE status = 'pending' AND archived_at IS NULL")->fetchColumn();
-  echo '<p class="bar">' . ($pc ? '<a class="btn" href="registrations.php">📝 ' . $pc . ' הרשמות ממתינות לאישור</a>' : '<a class="btn sec" href="registrations.php">הרשמות חדשות</a>') . ' <a class="btn sec" href="moe_sync.php">סנכרון משרד החינוך</a> <a class="btn sec" href="exports.php">ייצוא</a></p>'; } ?>
-<form class="bar auto" method="get">
-  <label>חיפוש<input name="q" value="<?= e($q) ?>" placeholder="שם / ת״ז / טלפון"></label>
-  <label>כיתה<select name="g"><option value="">הכל</option><?php foreach (GRADES as $x) echo '<option' . ($g === $x ? ' selected' : '') . '>' . e($x) . '</option>'; ?></select></label>
-  <label>עיר<input name="c" value="<?= e($c) ?>" placeholder="למשל חיפה"></label>
-  <label>סטטוס<select name="s"><option value="">הכל</option><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . ($s === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
-  <label>הצגה<select name="x"><option value="">הכל</option><?php foreach (XF as $k => $v) echo '<option value="' . $k . '"' . ($x === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
-  <button>OK</button>
-  <a class="btn sec<?= ($q !== '' || $g !== '' || $c !== '' || $s !== 'active' || $x !== '') ? ' hot' : '' ?>" href="students.php" title="איפוס כל הסינונים">↺ איפוס</a>
-  <?php if (can_edit()) echo '<a class="btn sec" href="student.php">+ תלמידה חדשה</a>'; ?>
-</form>
-<?php sec_open('list', 'רשימת התלמידות', $total . ' תוצאות', '☺', ['list']); ?>
-<?php $coll = in_array($u['role'], COLLECTION_ROLES, true); $off0 = ($pg - 1) * $per; ?>
-<div class="ut stu">
-  <div class="ur uth" aria-hidden="true"><span>#</span><span>שם</span><span>כיתה</span><span>עיר</span><span>טלפון</span><span>סטטוס</span><span></span></div>
+function stu_rows(array $rows, int $off0, bool $coll): void { ?>
 <?php foreach ($rows as $i => $r): ?>
   <details class="uw">
     <summary class="ur">
@@ -70,17 +52,34 @@ page_head('תלמידות');
       </div>
     </div>
   </details>
-<?php endforeach; if (!$rows) echo '<p class="mu emp">אין תוצאות.</p>'; ?>
+<?php endforeach; ?>
+<?php }
+if (($_GET['chunk'] ?? '') === '1') { header('X-More: ' . ($total > $pg * $per ? '1' : '0')); stu_rows($rows, ($pg - 1) * $per, in_array($u['role'], COLLECTION_ROLES, true)); exit; }
+page_head('תלמידות');
+?>
+<h1>תלמידות <span class="mu">(<?= $total ?> תוצאות)</span></h1>
+<?php if (can_edit()) { $pc = (int)db()->query("SELECT COUNT(*) FROM students WHERE status = 'pending' AND archived_at IS NULL")->fetchColumn();
+  echo '<p class="bar">' . ($pc ? '<a class="btn" href="registrations.php">📝 ' . $pc . ' הרשמות ממתינות לאישור</a>' : '<a class="btn sec" href="registrations.php">הרשמות חדשות</a>') . ' <a class="btn sec" href="moe_sync.php">סנכרון משרד החינוך</a> <a class="btn sec" href="exports.php">ייצוא</a></p>'; } ?>
+<form class="bar auto" method="get">
+  <label>חיפוש<input name="q" value="<?= e($q) ?>" placeholder="שם / ת״ז / טלפון"></label>
+  <label>כיתה<select name="g"><option value="">הכל</option><?php foreach (GRADES as $x) echo '<option' . ($g === $x ? ' selected' : '') . '>' . e($x) . '</option>'; ?></select></label>
+  <label>עיר<input name="c" value="<?= e($c) ?>" placeholder="למשל חיפה"></label>
+  <label>סטטוס<select name="s"><option value="">הכל</option><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . ($s === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
+  <label>הצגה<select name="x"><option value="">הכל</option><?php foreach (XF as $k => $v) echo '<option value="' . $k . '"' . ($x === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
+  <button>OK</button>
+  <a class="btn sec<?= ($q !== '' || $g !== '' || $c !== '' || $s !== 'active' || $x !== '') ? ' hot' : '' ?>" href="students.php" title="איפוס כל הסינונים">↺ איפוס</a>
+  <?php if (can_edit()) echo '<a class="btn sec" href="student.php">+ תלמידה חדשה</a>'; ?>
+</form>
+<?php sec_open('list', 'רשימת התלמידות', $total . ' תוצאות', '☺', ['list']); ?>
+<?php $coll = in_array($u['role'], COLLECTION_ROLES, true); $off0 = ($pg - 1) * $per; ?>
+<div class="ut stu">
+  <div class="ur uth" aria-hidden="true"><span>#</span><span>שם</span><span>כיתה</span><span>עיר</span><span>טלפון</span><span>סטטוס</span><span></span></div>
+<?php stu_rows($rows, $off0, $coll); if (!$rows) echo '<p class="mu emp">אין תוצאות.</p>'; ?>
 </div>
 <?php
-$pages = (int)ceil($total / $per);
-if ($pages > 1) {
-  echo '<p>';
-  for ($i = 1; $i <= $pages; $i++) {
-    $qs = http_build_query(['q' => $q, 'g' => $g, 'c' => $c, 's' => $s, 'p' => $i]);
-    echo $i === $pg ? '<b>' . $i . '</b> ' : '<a href="?' . e($qs) . '">' . $i . '</a> ';
-  }
-  echo '</p>';
+if ($total > $pg * $per) {
+  $qs = http_build_query(['q' => $q, 'g' => $g, 'c' => $c, 's' => $s, 'x' => $x, 'chunk' => 1, 'p' => $pg + 1]);
+  echo '<div id="more" data-url="?' . e($qs) . '" data-next="' . ($pg + 1) . '"><a class="btn sec" href="?' . e(http_build_query(['q' => $q, 'g' => $g, 'c' => $c, 's' => $s, 'x' => $x, 'p' => $pg + 1])) . '">טעינת עוד תלמידות</a></div>';
 }
 sec_close();
 page_foot();

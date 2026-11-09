@@ -191,4 +191,27 @@
     var b = e.target.closest ? e.target.closest('[data-print]') : null;
     if (b) window.print();
   });
+  (function () {
+    var more = document.getElementById('more'), list = document.querySelector('.ut.stu');
+    if (!more || !list || !('IntersectionObserver' in window)) return;
+    var busy = false, url = more.getAttribute('data-url');
+    more.className = 'more';
+    more.innerHTML = '<span class="mu">טוען עוד תלמידות…</span>';
+    function load() {
+      if (busy || !url) return;
+      busy = true;
+      fetch(url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } }).then(function (r) {
+        var m = r.headers.get('X-More') === '1';
+        return r.text().then(function (t) { return [m, t]; });
+      }).then(function (a) {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = a[1];
+        while (tmp.firstChild) list.appendChild(tmp.firstChild);
+        if (a[0]) { url = url.replace(/p=(\d+)/, function (_, n) { return 'p=' + (parseInt(n, 10) + 1); }); busy = false; io.observe(more); }
+        else { more.remove(); }
+      }).catch(function () { busy = false; more.innerHTML = '<a class="btn sec" href="' + url.replace('&chunk=1', '') + '">שגיאת טעינה – לחצו לנסות שוב</a>'; });
+    }
+    var io = new IntersectionObserver(function (en) { if (en[0].isIntersecting) { io.unobserve(more); load(); } }, { rootMargin: '600px' });
+    io.observe(more);
+  })();
 })();
