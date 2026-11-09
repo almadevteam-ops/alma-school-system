@@ -10,6 +10,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pp = (string)($_POST['pay_pref'] ?? ''); if ($pp !== '' && !isset(PAY_METHODS[$pp])) $pp = '';
     db()->prepare('UPDATE students SET pay_pref = ?, card_ok = ?, updated_at = ? WHERE id = ?')->execute([$pp, ($pp === 'hok_card' && !empty($_POST['card_ok'])) ? ($s['card_ok'] ?: date('Y-m-d')) : null, now(), $sid]);
     audit('reg_pay', 'student', (string)$sid, $pp . (!empty($_POST['card_ok']) ? ' · אשראי הוסדר' : '')); $msg = 'עודכן.';
+  } elseif ($act === 'approve' && $s && $s['marital'] === 'divorced' && !has_divorce_doc($sid)) {
+    $err = 'לא ניתן לאשר: הורים גרושים ללא מסמך חתום על ידי שני ההורים. יש לצרף אותו בכרטיס התלמידה (מסמכים).';
   } elseif ($act === 'approve' && $s) {
     $pdo = db(); $pdo->beginTransaction();
     $pdo->prepare("UPDATE students SET status = 'active', updated_at = ? WHERE id = ?")->execute([now(), $sid]);

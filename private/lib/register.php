@@ -14,3 +14,14 @@ function reg_url(): string { return 'https://' . (string)cfg('host', 'alma-schoo
 function reg_message(): string {
   return 'ברוכים הבאים למשפחת עלמא! ברכות על קבלתך למקום הטוב ביותר. נא למלא את הפרטים בקישור, ולצרף צילום תעודת זהות וספח: ' . reg_url();
 }
+
+/** האם צורף לפחות קובץ תקין אחד בשדה טופס הגרושים (fd[]). */
+function reg_divorce_ok(): bool {
+  $f = $_FILES['fd'] ?? null; if (!$f || !is_array($f['name'])) return false;
+  foreach ($f['name'] as $i => $_) {
+    if (($f['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) continue;
+    $t = (string)$f['tmp_name'][$i]; $sz = (int)@filesize($t);
+    if ($sz > 0 && $sz <= FILE_MAX && isset(FILE_MIMES[(string)(new finfo(FILEINFO_MIME_TYPE))->file($t)])) return true;
+  }
+  return false;
+}

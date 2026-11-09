@@ -234,3 +234,4 @@ tr.pendrow td { vertical-align: top; }
   .sc.prt th, .sc.prt td { padding: 2px 4px; }
 }
 .more { text-align: center; padding: 14px; }
+.alertbar { background: #fbeceb; border: 1px solid #efc3bf; border-radius: 10px; padding: 10px 14px; margin: 10px 0; }

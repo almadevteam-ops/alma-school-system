@@ -73,3 +73,16 @@ function gad_mark(int $m, array $fams, int $gid, int $uid): int {
   }
   return $n;
 }
+
+/** כיתה מפורטת: רק הספרה 1-3. נשמרת כאות השכבה + ספרה (למשל "ט2"). */
+function cls_norm(string $grade, string $raw): string {
+  if (!preg_match('/([123])\D*$/u', trim($raw), $m)) return '';
+  return $grade . $m[1];
+}
+function cls_digit(string $cls): string { return preg_match('/([123])\D*$/u', $cls, $m) ? $m[1] : ''; }
+/** תצוגה משולבת: שכבה + כיתה, למשל "ט2" (או "ט" אם אין כיתה מפורטת). */
+function class_label(string $grade, string $cls): string {
+  $d = cls_digit($cls); return $d !== '' ? $grade . $d : $grade;
+}
+/** האם יש לתלמידה מסמך הורים גרושים. */
+function has_divorce_doc(int $sid): bool { $q = db()->prepare("SELECT 1 FROM student_files WHERE student_id = ? AND kind = 'divorce' LIMIT 1"); $q->execute([$sid]); return (bool)$q->fetchColumn(); }

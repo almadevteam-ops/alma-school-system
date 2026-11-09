@@ -67,7 +67,7 @@ function oldsync_run(array $D, array $o, array $u, bool $dry): array {
     $map = function (array $s): array {
       [$st, $hn] = split_street_house((string)($s['addr'] ?? ''));
       $disc = !empty($s['disc']);
-      return ['name' => os_str($s['name'], 100), 'grade' => os_str($s['grade'] ?? '', 4), 'cls' => os_str($s['cls'] ?? '', 8), 'idn' => ($i = norm_id((string)($s['idn'] ?? ''))) !== '' ? os_str($i, 20) : '',
+      return ['name' => os_str($s['name'], 100), 'grade' => os_str($s['grade'] ?? '', 4), 'cls' => cls_norm((string)($s['grade'] ?? ''), (string)($s['cls'] ?? '')), 'idn' => ($i = norm_id((string)($s['idn'] ?? ''))) !== '' ? os_str($i, 20) : '',
         'dob' => os_date((string)($s['dob'] ?? '')), 'addr' => os_str($st, 200), 'house_no' => os_str($hn, 12), 'addr_orig' => os_str($s['addr'] ?? '', 200), 'city' => os_str($s['city'] ?? '', 80), 'email' => os_str(mb_strtolower((string)($s['email'] ?? '')), 150),
         'phone' => norm_phone((string)($s['phone'] ?? '')), 'home_phone' => norm_phone((string)($s['hPhone'] ?? '')), 'f_name' => os_str($s['fName'] ?? '', 80), 'f_phone' => norm_phone((string)($s['fPhone'] ?? '')), 'f_id' => norm_id((string)($s['fId'] ?? '')),
         'm_name' => os_str($s['mName'] ?? '', 80), 'm_phone' => norm_phone((string)($s['mPhone'] ?? '')), 'm_id' => norm_id((string)($s['mId'] ?? '')), 'hmo' => ($h = hmo_norm((string)($s['hmo'] ?? ''))) === HMO_UNKNOWN ? '' : os_str($h, 30),

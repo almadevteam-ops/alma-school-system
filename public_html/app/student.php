@@ -4,7 +4,7 @@ $u = require_login();
 $isAdmin = $u['role'] === 'admin';
 // key => [label, maxlen, sensitive]
 $F = [
-  'name' => ['שם מלא', 100, 0], 'grade' => ['כיתה', 4, 0], 'cls' => ['מחזור/כיתה מפורטת', 8, 0],
+  'name' => ['שם מלא', 100, 0], 'grade' => ['כיתה', 4, 0], 'cls' => ['כיתה מפורטת', 8, 0],
   'idn' => ['תעודת זהות', 9, 1], 'dob' => ['תאריך לידה', 12, 0], 'city' => ['עיר', 80, 0], 'addr' => ['רחוב', 200, 0], 'house_no' => ['מספר בית', 12, 0],
   'email' => ['אימייל', 150, 0], 'phone' => ['טלפון התלמידה', 30, 0],
   'f_name' => ['שם האב', 80, 0], 'f_phone' => ['טלפון האב', 30, 0], 'f_id' => ['ת״ז האב', 9, 1],
@@ -47,6 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!can_edit()) fail_page(403, 'אין לך הרשאת עריכה.');
   $d = [];
   foreach ($F as $k => [$lbl, $max]) $d[$k] = mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max);
+  $d['cls'] = cls_norm($d['grade'], $d['cls']);
   // שדות נעולים לא-מנהלת: הערך הקיים נשמר, גם אם נשלח משהו אחר
   if ($row && !$isAdmin) foreach (ADMIN_ONLY as $k) $d[$k] = (string)$row[$k];
   if (!can_see_ids()) foreach (ID_FIELDS as $k) $d[$k] = (string)($row[$k] ?? '');
@@ -133,11 +134,12 @@ if ($id && can_see_ids()) { $q = db()->prepare('SELECT id, kind, orig_name, mime
 $val = fn($k) => $row[$k] ?? '';
 page_head($row ? $row['name'] : 'תלמידה חדשה');
 ?>
-<?php if ($row && $id): ?><div class="sub"><div class="in"><a href="students.php">‹ חזרה לתלמידות</a><b class="nm"><?= e($row['name']) ?></b><span class="mu">כיתה <?= e(trim($row['grade'] . ' ' . ($row['cls'] ?? ''))) ?></span><span class="gap"></span><span class="pill <?= e($row['status']) ?>"><?= e(STATUS[$row['status']] ?? $row['status']) ?></span></div></div><?php endif; ?>
+<?php if ($row && $id): ?><div class="sub"><div class="in"><a href="students.php">‹ חזרה לתלמידות</a><b class="nm"><?= e($row['name']) ?></b><span class="mu">כיתה <?= e(class_label((string)$row['grade'], (string)($row['cls'] ?? ''))) ?></span><span class="gap"></span><span class="pill <?= e($row['status']) ?>"><?= e(STATUS[$row['status']] ?? $row['status']) ?></span></div></div><?php endif; ?>
 <h1><?= $row ? e($row['name']) : 'תלמידה חדשה' ?></h1>
 <?php if (!empty($row['archived_at'])) echo '<p class="aptn">התלמידה בארכיון (מאז ' . e(date('d/m/Y', strtotime((string)$row['archived_at']))) . '). כל הרשומות שלה נשמרו.' . ($isAdmin ? ' <a href="archive.php">לדף הארכיון</a>' : '') . '</p>'; ?>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
-<?php sec_open('details', 'פרטי תלמידה', trim(($row['grade'] ?? '') . ' ' . ($row['cls'] ?? '')) !== '' ? 'כיתה ' . trim(($row['grade'] ?? '') . ' ' . ($row['cls'] ?? '')) : '', '☺', ['details']); ?>
+<?php if ($row && $id && ($row['marital'] ?? '') === 'divorced' && !has_divorce_doc($id)): ?><p class="er alertbar">⚠ הורים גרושים: חסר מסמך חתום על ידי שני ההורים. <a href="?id=<?= (int)$id ?>&open=docs#s-docs">להעלאת המסמך</a></p><?php endif; ?>
+<?php sec_open('details', 'פרטי תלמידה', ($row['grade'] ?? '') !== '' ? 'כיתה ' . class_label((string)$row['grade'], (string)($row['cls'] ?? '')) : '', '☺', ['details']); ?>
 <form method="post" class="dirty" autocomplete="off">
   <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>">
   <div class="fg">
@@ -150,6 +152,11 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     if ($k === 'grade') {
       echo '<label><span>' . e($lbl) . $star . '</span><select name="grade"' . ($ro ? ' disabled' : '') . $reqa . '><option value=""></option>';
       foreach (GRADES as $x) echo '<option' . ($val('grade') === $x ? ' selected' : '') . '>' . e($x) . '</option>';
+      echo '</select></label>'; continue;
+    }
+    if ($k === 'cls') {
+      echo '<label><span>' . e($lbl) . '</span><select name="cls"' . ($ro ? ' disabled' : '') . '><option value="">—</option>';
+      foreach (['1', '2', '3'] as $x) echo '<option' . (cls_digit((string)$val('cls')) === $x ? ' selected' : '') . '>' . $x . '</option>';
       echo '</select></label>'; continue;
     }
     if ($k === 'hmo') {

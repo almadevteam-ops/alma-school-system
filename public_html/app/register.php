@@ -20,6 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   elseif ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $err = 'כתובת המייל לא תקינה.';
   elseif ($dobIn !== '' && ($d['dob'] === '' || $d['dob'] > date('Y-m-d'))) $err = 'תאריך הלידה לא תקין.';
   elseif ($d['f_phone'] === '' && $d['m_phone'] === '') $err = 'נא למלא לפחות טלפון אחד של אחד ההורים.';
+  elseif ($d['marital'] === 'divorced' && !reg_divorce_ok()) $err = 'בהורים גרושים חובה לצרף טופס חתום על ידי שני ההורים (JPG / PNG / PDF עד 10MB).';
   else {
     foreach (['phone' => 'טלפון התלמידה', 'f_phone' => 'טלפון האב', 'm_phone' => 'טלפון האם'] as $k => $l) if ($d[$k] !== '' && !phone_ok($d[$k])) { $err = $l . ': מספר טלפון לא תקין.'; break; }
     if (!$err) foreach (['f_id' => 'ת״ז האב', 'm_id' => 'ת״ז האם'] as $k => $l) if ($d[$k] !== '' && (!preg_match('/^\d{9}$/', $d[$k]) || !valid_il_id($d[$k]))) { $err = $l . ': יש להקליד מספר זהות תקין.'; break; }
@@ -83,7 +84,7 @@ page_head('הרשמה לעלמא', false);
       <label>מצב הורים<select name="marital"><option value="married">נשואים</option><option value="divorced"<?= ($d['marital'] ?? '') === 'divorced' ? ' selected' : '' ?>>גרושים</option></select></label>
       <label>אופן תשלום שכר הלימוד<select name="pay_pref"><option value="">אסדיר מול המזכירות</option><option value="hok_card"<?= ($d['pay_pref'] ?? '') === 'hok_card' ? ' selected' : '' ?>>הוראת קבע באשראי (קישור מאובטח)</option></select></label>
       <label class="wide">צילום תעודת זהות וספח (JPG / PNG / PDF, כל קובץ עד 10MB)<input type="file" name="f[]" multiple accept="image/jpeg,image/png,image/webp,application/pdf"></label>
-      <label class="wide">טופס חתום להורים גרושים (אם רלוונטי)<input type="file" name="fd[]" multiple accept="image/jpeg,image/png,image/webp,application/pdf"></label>
+      <label class="wide" data-g="div" hidden>טופס חתום על ידי שני ההורים (חובה בהורים גרושים) <span class="req">*</span><input type="file" name="fd[]" multiple accept="image/jpeg,image/png,image/webp,application/pdf"></label>
     </div>
     <p class="mu">הפרטים נשמרים מוצפנים ומשמשים את המזכירות בלבד. לא נשמרים כאן פרטי אשראי.</p>
     <div class="acts"><button class="sv" disabled>שליחת ההרשמה</button></div>

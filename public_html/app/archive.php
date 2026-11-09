@@ -25,7 +25,7 @@ page_head('ארכיון');
   <?php foreach ($rows as $r): ?>
   <tr>
     <td><a href="student.php?id=<?= (int)$r['id'] ?>"><?= e($r['name']) ?></a></td>
-    <td><?= e(trim($r['grade'] . ' ' . $r['cls'])) ?></td>
+    <td><?= e(class_label((string)$r['grade'], (string)$r['cls'])) ?></td>
     <td><?= e(STATUS[$r['status']] ?? $r['status']) ?></td>
     <td><bdi dir="ltr"><?= e(date('d/m/Y H:i', strtotime((string)$r['archived_at']))) ?></bdi></td>
     <td><?= e($r['archived_by']) ?></td>

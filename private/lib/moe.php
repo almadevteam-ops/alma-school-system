@@ -69,8 +69,8 @@ function moe_compute(array $rows, int $hi, array $map): array {
     $x['nm'] = $g('name') !== '' ? $g('name') : trim($g('last') . ' ' . $g('first'));
     $gr = preg_replace('/["\'׳״\s]/u', '', preg_replace('/כיתה|שכבה/u', '', $g('grade')) ?? '') ?? '';
     $x['grade'] = ''; $x['cls'] = '';
-    if (preg_match('/^(יא|יב|י|ח|ט|ז)\D*(\d)?$/u', $gr, $m)) { $x['grade'] = $m[1]; $x['cls'] = $m[1] . ($m[2] ?? ''); }
-    elseif (preg_match('/^(7|8|9|10|11|12)$/', $gr)) { $x['grade'] = import_grade($gr); $x['cls'] = $x['grade']; }
+    if (preg_match('/^(יא|יב|י|ח|ט|ז)\D*(\d)?$/u', $gr, $m)) { $x['grade'] = $m[1]; $x['cls'] = cls_norm($m[1], (string)($m[2] ?? '')); }
+    elseif (preg_match('/^(7|8|9|10|11|12)$/', $gr)) { $x['grade'] = import_grade($gr); $x['cls'] = ''; }
     if ($x['nm'] !== '' || $x['idn'] !== '') $M[] = $x;
   }
   $S = db()->query('SELECT id, name, idn, status, archived_at, ' . implode(', ', MOE_SYNC) . ' FROM students')->fetchAll();

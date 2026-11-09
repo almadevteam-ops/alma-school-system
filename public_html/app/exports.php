@@ -14,7 +14,7 @@ function exp_students(bool $ids): array {
   $head = ['שם', 'כיתה', 'סטטוס', 'שם אב', 'טלפון אב', 'שם אם', 'טלפון אם', 'טלפון תלמידה', 'טלפון בית', 'כתובת', 'עיר', 'אימייל', 'קופת חולים', 'מצב הורים', 'בדירה', 'ועדה', '07', 'רגישות', 'הנחה (₪)', 'ספרים'];
   if ($ids) array_splice($head, 2, 0, ['ת.ז', 'תאריך לידה']);
   $rows = [];
-  foreach ($S as $s) { $r = [$s['name'], $s['cls'] ?: $s['grade'], $st[$s['status']] ?? $s['status'], $s['f_name'], $s['f_phone'], $s['m_name'], $s['m_phone'], $s['phone'], $s['home_phone'], trim($s['addr'] . ' ' . $s['house_no']), $s['city'], $s['email'], $s['hmo'], $s['marital'] === 'divorced' ? 'גרושים' : 'נשואים', $s['is_apt'] ? 'כן' : '', $s['vaada'] ? 'כן' : '', $s['s07'] ? 'כן' : '', $s['allergy'] ? trim($s['allergy_list'] . ' ' . $s['allergy_other']) : '', $s['disc_on'] ? $s['disc_amt'] : '', $s['books']];
+  foreach ($S as $s) { $r = [$s['name'], class_label((string)$s['grade'], (string)$s['cls']), $st[$s['status']] ?? $s['status'], $s['f_name'], $s['f_phone'], $s['m_name'], $s['m_phone'], $s['phone'], $s['home_phone'], trim($s['addr'] . ' ' . $s['house_no']), $s['city'], $s['email'], $s['hmo'], $s['marital'] === 'divorced' ? 'גרושים' : 'נשואים', $s['is_apt'] ? 'כן' : '', $s['vaada'] ? 'כן' : '', $s['s07'] ? 'כן' : '', $s['allergy'] ? trim($s['allergy_list'] . ' ' . $s['allergy_other']) : '', $s['disc_on'] ? $s['disc_amt'] : '', $s['books']];
     if ($ids) array_splice($r, 2, 0, [$s['idn'], $s['dob']]); $rows[] = $r; }
   return [$head, $rows];
 }

@@ -4,10 +4,10 @@ $u = require_role(COLLECTION_ROLES);
 $err = ''; $msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'bulk_charge') {
   csrf_check();
-  $kind = (string)($_POST['kind'] ?? 'other'); $mode = (string)($_POST['mode'] ?? 'flat');
+  $mode = (string)($_POST['mode'] ?? 'flat');
   $label = mb_substr(trim((string)($_POST['label'] ?? '')), 0, 100); $amt = money_in((string)($_POST['amount'] ?? ''));
-  if (!isset(CHARGE_KINDS[$kind])) $kind = 'other';
-  if ($label === '') $err = 'נא למלא תיאור חיוב (למשל "ספרי לימוד תשפז").';
+  $kind = preg_match('/ספר/u', $label) ? 'books' : (preg_match('/סיור|טיול/u', $label) ? 'tour' : (preg_match('/חוג/u', $label) ? 'activities' : 'other'));
+  if ($label === '') $err = 'נא למלא קטגוריה (למשל "ספרי לימוד" או "סיור שנתי").';
   elseif (empty($_POST['ok'])) $err = 'נא לאשר את ההוספה לכל התיקים.';
   elseif ($mode === 'flat' && ($amt === null || $amt <= 0)) $err = 'סכום לא תקין.';
   else {
@@ -184,14 +184,14 @@ $badge = function (array $x): string {
 <?php sec_close(); ?>
 <?php sec_open('bulk', 'חיוב לכל התיקים', 'ספרי לימוד, סיור, חוגים', '＋', $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'bulk_charge' ? ['bulk'] : []); ?>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="bulk_charge">
-    <label>סוג<select name="kind"><?php foreach (CHARGE_KINDS as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
-    <label>תיאור<input name="label" maxlength="100" placeholder="למשל: ספרי לימוד תשפז" required></label>
+    <label>קטגוריה<input name="label" maxlength="100" list="chg-cats" placeholder="למשל: ספרי לימוד" required></label>
+    <datalist id="chg-cats"><?php foreach (array_unique([...array_values(CHARGE_KINDS), ...array_column(db()->query("SELECT DISTINCT label FROM charges WHERE voided_at IS NULL ORDER BY label LIMIT 50")->fetchAll(), 'label')]) as $cv) if ($cv !== 'אחר') echo '<option value="' . e($cv) . '">'; ?></datalist>
     <label>אופן חישוב<select name="mode"><option value="flat">סכום קבוע לכל תלמידה</option><option value="books">ספרים לפי כיתה (ז, ח, יב 250 · ט, י 350 · יא 450)</option></select></label>
     <label>סכום לתלמידה<input name="amount" inputmode="decimal"></label>
     <label class="chk"><input type="checkbox" name="ok" value="1"> לאשר הוספה לכל התיקים הפעילים</label>
     <button>הוספה</button>
   </form>
-  <p class="mu">חיוב שכבר קיים בתיק עם אותו תיאור לא יתווסף שוב. אפשר לבטל חיוב בתוך התיק.</p>
+  <p class="mu">חיוב שכבר קיים בתיק באותה קטגוריה לא יתווסף שוב. אפשר לבטל חיוב בתוך התיק.</p>
 <?php sec_close(); ?>
 <?php sec_open('nofile', 'תלמידות בלי תיק גבייה', count($nofile) . ' תלמידות', '☺', isset($_GET['nofile']) || ($_POST['act'] ?? '') === 'create_all' ? ['nofile'] : []); ?>
   <?php if (isset($_GET['nofile'])): ?>

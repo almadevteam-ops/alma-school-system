@@ -103,6 +103,7 @@ function import_parse(string $raw, array $existing): array {
     foreach ($cols as $i => $k) $d[$k] = mb_substr(trim((string)($r[$i] ?? '')), 0, IMPORT_MAXLEN[$k] + 40);
     $errs = []; $warns = [];
     $d['grade'] = import_grade($d['grade']);
+    $d['cls'] = cls_norm($d['grade'], $d['cls']);
     if ($d['name'] === '') $errs[] = 'חסר שם';
     if (!in_array($d['grade'], GRADES, true)) $errs[] = 'כיתה לא מוכרת (' . ($d['grade'] === '' ? 'ריקה' : $d['grade']) . ')';
     if ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $errs[] = 'אימייל לא תקין';

@@ -214,4 +214,11 @@
     var io = new IntersectionObserver(function (en) { if (en[0].isIntersecting) { io.unobserve(more); load(); } }, { rootMargin: '600px' });
     io.observe(more);
   })();
+  // הורים גרושים: מציגים ודורשים צירוף מסמך חתום
+  document.querySelectorAll('select[name=marital]').forEach(function (sel) {
+    var box = document.querySelector('[data-g=div]'); if (!box) return;
+    var inp = box.querySelector('input[type=file]');
+    function t() { var d = sel.value === 'divorced'; box.hidden = !d; if (inp) inp.required = d; }
+    sel.addEventListener('change', t); t();
+  });
 })();
