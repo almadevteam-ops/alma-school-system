@@ -8,7 +8,7 @@ function csv_out(string $file, array $head, array $rows): void {
   $o = fopen('php://output', 'w'); fwrite($o, "\xEF\xBB\xBF"); fputcsv($o, array_map('csv_cell', $head), ',', '"', '');
   foreach ($rows as $r) fputcsv($o, array_map('csv_cell', $r), ',', '"', ''); exit;
 }
-$ST = ['paid' => 'שולם', 'part' => 'חלקי', 'none' => 'לא שולם', 'na' => '–', 'wip' => 'בטיפול', 'ref' => 'החזר'];
+$ST = ['paid' => 'שולם', 'part' => 'חלקי', 'none' => 'לא שולם', 'na' => '–', 'wip' => 'בטיפול', 'ref' => 'החזר', 'fut' => 'עתידי'];
 function exp_students(bool $ids): array {
   $S = db()->query("SELECT * FROM students WHERE archived_at IS NULL AND status <> 'pending' ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name")->fetchAll(); $st = ['active' => 'פעילה', 'left' => 'עזבה'];
   $head = ['שם', 'כיתה', 'סטטוס', 'שם אב', 'טלפון אב', 'שם אם', 'טלפון אם', 'טלפון תלמידה', 'טלפון בית', 'כתובת', 'עיר', 'אימייל', 'קופת חולים', 'מצב הורים', 'בדירה', 'ועדה', '07', 'רגישות', 'הנחה (₪)', 'ספרים'];

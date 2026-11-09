@@ -235,3 +235,5 @@ tr.pendrow td { vertical-align: top; }
 }
 .more { text-align: center; padding: 14px; }
 .alertbar { background: #fbeceb; border: 1px solid #efc3bf; border-radius: 10px; padding: 10px 14px; margin: 10px 0; }
+.mc.fut{background:#eee9ec;color:#a79ba3}.mb.fut{background:#eee9ec;color:var(--mu)}
+.futrow td{color:var(--mu)}

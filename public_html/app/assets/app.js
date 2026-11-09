@@ -221,4 +221,23 @@
     function t() { var d = sel.value === 'divorced'; box.hidden = !d; if (inp) inp.required = d; }
     sel.addEventListener('change', t); t();
   });
+  // תצוגה מקדימה של חלוקת תשלום בין החודשים
+  (function () {
+    var box = document.getElementById('pvbox'); if (!box) return;
+    var f = box.previousElementSibling; if (!f || f.tagName !== 'FORM') return;
+    var amt = f.querySelector('[name=amount]'), tg = f.querySelector('[name=target]'), fm = f.querySelector('[name=for_month]'), tmr = null;
+    function fmt(n) { return Number(n).toLocaleString('he-IL', { maximumFractionDigits: 2 }) + ' ₪'; }
+    function run() {
+      if (tg.value !== 'tuition') { box.textContent = ''; return; }
+      fetch(box.getAttribute('data-url') + '&amount=' + encodeURIComponent(amt.value) + '&for_month=' + encodeURIComponent(fm.value), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); }).then(function (j) {
+          if (!j.rows.length && !j.credit) { box.textContent = ''; return; }
+          var t = 'החלוקה: ' + j.rows.map(function (x) { return x.m + ' ' + fmt(x.a) + (x.f ? ' (מראש)' : ''); }).join(' · ');
+          if (j.surplus > 0.004) t += ' · יתרת זכות מעבר לשנה ' + fmt(j.surplus);
+          box.textContent = t;
+        }).catch(function () { box.textContent = ''; });
+    }
+    function sched() { clearTimeout(tmr); tmr = setTimeout(run, 250); }
+    amt.addEventListener('input', sched); tg.addEventListener('change', sched); fm.addEventListener('change', sched);
+  })();
 })();

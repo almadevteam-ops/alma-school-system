@@ -93,11 +93,11 @@ page_head('גבייה');
 <h1>גבייה <span class="mu">(<?= count($fams) ?> תיקים)</span></h1>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <div class="tiles">
-  <div class="tile"><span class="mu">שכר לימוד</span><b><?= e(money($T['tuition'])) ?></b></div>
+  <div class="tile"><span class="mu">שכר לימוד לשנה</span><b><?= e(money($T['tuition'])) ?></b></div>
   <div class="tile"><span class="mu">חיובים נוספים</span><b><?= e(money($T['charges'])) ?></b></div>
   <div class="tile g"><span class="mu">שולם</span><b class="ok"><?= e(money($T['paid'])) ?></b></div>
   <div class="tile w"><span class="mu">בפיגור נכון להיום (<?= (int)$late['n'] ?> תיקים)</span><b><?= e(money($late['sum'])) ?></b></div>
-  <div class="tile p"><span class="mu">יתרה לגבייה (כולל מה שעוד לא הגיע מועדו)</span><b class="er"><?= e(money($T['balance'])) ?></b></div>
+  <div class="tile p"><span class="mu">חוב נוכחי (עד <?= e(SCHOOL_MONTHS[school_month_now()]) ?> כולל, בניכוי תשלומים מראש)</span><b class="er"><?= e(money($T['balance'])) ?></b></div>
 </div>
 <?php $qs = fn(array $o) => http_build_query(array_merge(['q' => $q, 'f' => $f, 'm' => $mm, 'k' => $kind, 'min' => $min ?: '', 's' => $sort, 'v' => $view], $o)); ?>
 <p class="subnav"><a class="btn sec" href="monthly.php">סיכום חודשי</a> <a class="btn sec" href="charges.php">גביות חד־פעמיות</a> <a class="btn sec" href="gad.php">מורשת גד (דירות)</a> <?php if (in_array($u['role'], ['admin', 'finance'], true)) echo '<a class="btn sec" href="exports.php">ייצוא</a> <a class="btn sec" href="income_import.php">העלאת דוח הכנסות</a>'; ?><?php if (pay_url() !== '') echo ' <a class="btn" href="' . e(pay_url()) . '" target="_blank" rel="noopener">💳 תשלום מאובטח</a>'; ?></p>
@@ -133,7 +133,7 @@ $badge = function (array $x): string {
   <div class="cc<?= $x['late'] > 0.004 ? ($x['behind'] >= 2 ? ' hi' : ' lo') : '' ?>">
     <div class="ch"><a class="nm" href="family.php?id=<?= (int)$r['id'] ?>"><?= e($r['name']) ?></a><?= $badge($x) ?></div>
     <div class="mu"><?= e((string)$r['names']) ?></div>
-    <div class="cn"><span class="mu">יתרה כוללת</span> <b class="<?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money($d['balance'])) ?></b><?php if ($r['payer_kind'] !== 'parents') echo ' <span class="pill">' . e(payer_label($r)) . '</span>'; ?></div>
+    <div class="cn"><span class="mu"><?= $d['balance'] < -0.004 ? 'יתרת זכות' : 'חוב נוכחי' ?></span> <b class="<?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money(abs($d['balance']))) ?></b><?php if ($r['payer_kind'] !== 'parents') echo ' <span class="pill">' . e(payer_label($r)) . '</span>'; ?></div>
     <div class="mcs"><?= month_cells($d) ?></div>
     <div class="tels">
       <?php foreach (['f', 'm'] as $k) if (isset($ct[$k])): [$lab, $nm, $ph] = $ct[$k]; ?>
@@ -152,7 +152,7 @@ $badge = function (array $x): string {
     <summary class="ur">
       <span class="c nm"><b><?= e($r['name']) ?></b><?php if ($r['payer_kind'] !== 'parents') echo ' <span class="pill">' . e(payer_label($r)) . '</span>'; ?></span>
       <span class="c mu" data-l="תלמידות"><?= e((string)$r['names']) ?></span>
-      <span class="c bal <?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>" data-l="יתרה"><?= e(money($d['balance'])) ?></span>
+      <span class="c bal <?= $d['balance'] > 0.004 ? 'er' : 'ok' ?>" data-l="יתרה"><?= $d['balance'] < -0.004 ? 'זכות ' : '' ?><?= e(money(abs($d['balance']))) ?></span>
       <span class="c stt" data-l="פיגור"><?= $badge($arr[(int)$r['id']]) ?></span>
       <span class="c mcs" data-l="חודשים"><?= month_cells($d) ?></span>
       <span class="chev" aria-hidden="true">⌄</span>

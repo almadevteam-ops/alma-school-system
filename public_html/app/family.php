@@ -138,6 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if (!empty($_GET['m'])) $msg = mb_substr((string)$_GET['m'], 0, 200);
 if (!empty($_GET['e'])) $err = mb_substr((string)$_GET['e'], 0, 500);
 $sum = collection_data([$id])[$id];
+if (isset($_GET['pv']) && $fam && $_SERVER['REQUEST_METHOD'] === 'GET') {   // תצוגה מקדימה: איך התשלום יתחלק בין החודשים
+  header('Content-Type: application/json; charset=utf-8'); $a = money_in((string)($_GET['amount'] ?? '')); $fm = (int)($_GET['for_month'] ?? 0);
+  if ($a === null || $a <= 0) { echo json_encode(['rows' => [], 'credit' => 0]); exit; }
+  $aft = collection_data([$id], null, [$id => [[$a, ($fm >= 1 && $fm <= 12) ? $fm : 0]]])[$id]; $rows = [];
+  foreach (SCHOOL_MONTHS as $m => $nm) { if ($m > $sum['months']) break; $dlt = round((float)$aft['cov'][$m] - (float)$sum['cov'][$m], 2); if ($dlt > 0.004) $rows[] = ['m' => $nm, 'a' => $dlt, 'f' => $m > $sum['cur']]; }
+  echo json_encode(['rows' => $rows, 'credit' => $aft['credit'], 'surplus' => round($a - array_sum(array_column($rows, 'a')), 2)], JSON_UNESCAPED_UNICODE); exit;
+}
 $studs = family_students($id);
 $payers = db()->query('SELECT id, name FROM payers ORDER BY name')->fetchAll();
 $divorced = (bool)array_filter($studs, fn($x) => ($x['marital'] ?? '') === 'divorced');
@@ -148,14 +155,14 @@ $chargeNames = array_column($charges, 'label', 'id');
 if ($err && $_SERVER['REQUEST_METHOD'] === 'POST') $_GET['open'] = ['add_payment' => 'pay', 'void_payment' => 'pay', 'save' => 'set', 'add_charge' => 'chg', 'void_charge' => 'chg', 'add_student' => 'stu', 'remove_student' => 'stu', 'charge_edit' => 'chg'][$_POST['act'] ?? ''] ?? 'notes';
 page_head($fam['name']);
 ?>
-<div class="sub"><div class="in"><a href="collection.php">‹ חזרה לגבייה</a><b class="nm"><?= e($fam['name']) ?></b><span class="mu">תיק גבייה</span><span class="gap"></span><span class="mu">יתרה</span><b class="bal <?= $sum['balance'] > 0 ? 'er' : 'ok' ?>"><?= e(money($sum['balance'])) ?></b><a class="btn" href="family.php?id=<?= $id ?>&amp;open=pay#s-pay">רישום תשלום</a></div></div>
+<div class="sub"><div class="in"><a href="collection.php">‹ חזרה לגבייה</a><b class="nm"><?= e($fam['name']) ?></b><span class="mu">תיק גבייה</span><span class="gap"></span><span class="mu"><?= $sum['balance'] < -0.004 ? 'זכות' : 'חוב' ?></span><b class="bal <?= $sum['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money(abs($sum['balance']))) ?></b><a class="btn" href="family.php?id=<?= $id ?>&amp;open=pay#s-pay">רישום תשלום</a></div></div>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <div class="hero">
   <div class="stats">
-    <div><span class="mu">חיוב שכר לימוד</span><b><?= e(money($sum['tuition'])) ?></b></div>
+    <div><span class="mu">שכר לימוד לשנה</span><b><?= e(money($sum['tuition'])) ?></b></div>
     <div><span class="mu">חיובים נוספים</span><b><?= e(money($sum['charges'])) ?></b></div>
     <div><span class="mu">שולם</span><b class="ok"><?= e(money($sum['paid'])) ?></b></div>
-    <div><span class="mu">יתרה</span><b class="<?= $sum['balance'] > 0 ? 'er' : 'ok' ?>"><?= e(money($sum['balance'])) ?></b></div>
+    <div><span class="mu"><?= $sum['balance'] < -0.004 ? 'יתרת זכות' : 'חוב נוכחי (עד ' . e(SCHOOL_MONTHS[$sum['cur']]) . ')' ?></span><b class="<?= $sum['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money(abs($sum['balance']))) ?></b></div>
   </div>
   <div class="mbs"><?= month_cells($sum, true) ?></div>
   <?php if (in_array($u['role'], ['admin', 'finance'], true) || can_edit()): ?>
@@ -188,6 +195,7 @@ page_head($fam['name']);
     <label>הערה<input name="note" maxlength="255"></label>
     <button>רישום</button>
   </form>
+  <p class="mu" id="pvbox" data-url="family.php?id=<?= $id ?>&pv=1" aria-live="polite"></p>
   <p class="mu">לא מקלידים מספרי כרטיס אשראי. החיוב עצמו מתבצע בנדרים פלוס, ופה נרשם רק שהתשלום התקבל.</p>
   <div class="sc"><table><tr><th>תאריך</th><th>סכום</th><th>אמצעי</th><th>עבור</th><th>אסמכתא</th><th>הערה</th><th>נרשם ע״י</th><th></th></tr>
   <?php foreach ($pays as $p): $v = $p['voided_at'] !== null; ?>

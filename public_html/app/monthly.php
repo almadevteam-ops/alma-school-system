@@ -14,6 +14,7 @@ foreach ($data as $fid => $d) {
   if (isset($gad[$fid])) $gadPaid += array_sum(array_map(fn($m) => min((float)$d['cov'][$m], $d['monthly']), array_keys(array_filter($d['status'], fn($x) => $x !== 'na'))));
 }
 foreach ($data as $fid => $d) { $r = db()->prepare('SELECT collect_day FROM families WHERE id = ?'); $r->execute([$fid]); if (collection_arrears($d, $r->fetchColumn())['late'] > 0.004) $lateN++; }
+$cur = school_month_now(); $missNow = 0.0; foreach (SCHOOL_MONTHS as $mm => $_) if ($mm <= $cur) $missNow += $ex[$mm] - $co[$mm];
 $sumEx = array_sum($ex); $sumCo = array_sum($co); $sumWp = array_sum($wp);
 $pend = (int)db()->query("SELECT COUNT(*) FROM students WHERE disc_on = 1 AND disc_status = 'pending' AND archived_at IS NULL")->fetchColumn();
 $chg = db()->query("SELECT COALESCE(SUM(amount - disc_amt),0) FROM charges WHERE voided_at IS NULL AND mark <> 'n'")->fetchColumn();
@@ -24,9 +25,9 @@ page_head('סיכום חודשי');
 <p class="subnav"><a class="btn sec" href="collection.php">‹ לגבייה</a></p>
 <div class="tiles">
   <div class="tile"><span class="mu">צפוי לשנה</span><b><?= e(money($sumEx)) ?></b></div>
-  <div class="tile g"><span class="mu">נגבה</span><b class="ok"><?= e(money($sumCo)) ?></b></div>
+  <div class="tile g"><span class="mu">נגבה (כולל מראש)</span><b class="ok"><?= e(money($sumCo)) ?></b></div>
   <div class="tile w"><span class="mu">בטיפול</span><b><?= e(money($sumWp)) ?></b></div>
-  <div class="tile p"><span class="mu">חסר</span><b class="er"><?= e(money($sumEx - $sumCo)) ?></b></div>
+  <div class="tile p"><span class="mu">חסר עד היום (עד <?= e(SCHOOL_MONTHS[$cur]) ?> כולל)</span><b class="er"><?= e(money($missNow)) ?></b></div>
   <div class="tile"><span class="mu">אחוז גבייה</span><b><?= $sumEx > 0 ? (int)round($sumCo / $sumEx * 100) : 0 ?>%</b></div>
   <div class="tile"><span class="mu">שולם ע״י מורשת גד (דירות)</span><b><?= e(money($gadPaid)) ?></b></div>
   <div class="tile"><span class="mu">הנחות ממתינות לאישור</span><b><?= $pend ?></b></div>
@@ -34,7 +35,7 @@ page_head('סיכום חודשי');
 </div>
 <div class="sc"><table><tr><th>חודש</th><th>תיקים</th><th>צפוי</th><th>נגבה</th><th>בטיפול</th><th>חסר</th><th>אחוז</th></tr>
 <?php foreach (SCHOOL_MONTHS as $m => $nm): ?>
-<tr><td><b><?= e($nm) ?></b></td><td><?= $n[$m] ?></td><td><?= e(money($ex[$m])) ?></td><td><?= e(money($co[$m])) ?></td><td><?= e(money($wp[$m])) ?></td><td><?= e(money($ex[$m] - $co[$m])) ?></td><td><?= $ex[$m] > 0 ? (int)round($co[$m] / $ex[$m] * 100) . '%' : '–' ?></td></tr>
+<tr<?= $m > $cur ? ' class="futrow"' : '' ?>><td><b><?= e($nm) ?></b><?= $m > $cur ? ' <span class="mu">(עתידי)</span>' : '' ?></td><td><?= $n[$m] ?></td><td><?= e(money($ex[$m])) ?></td><td><?= e(money($co[$m])) ?></td><td><?= e(money($wp[$m])) ?></td><td><?= $m > $cur ? '<span class="mu">–</span>' : e(money($ex[$m] - $co[$m])) ?></td><td><?= $ex[$m] > 0 ? (int)round($co[$m] / $ex[$m] * 100) . '%' : '–' ?></td></tr>
 <?php endforeach; ?></table></div>
-<p class="mu">הסיכום כולל שכר לימוד בלבד, אחרי הנחות מאושרות ובלי חודשים שסומנו "לא רלוונטי" או אחרי עזיבה. חיובים נוספים: חויב <?= e(money($chg)) ?>, שולם <?= e(money($chp)) ?> (פירוט בעמוד <a href="charges.php">גביות חד־פעמיות</a>).</p>
+<p class="mu">חודשים שעוד לא הגיעו (באפור) אינם נספרים כחוסר; חודש נכנס לחוב ב-1 בחודש בחצות. הסיכום כולל שכר לימוד בלבד, אחרי הנחות מאושרות ובלי חודשים שסומנו "לא רלוונטי" או אחרי עזיבה. חיובים נוספים: חויב <?= e(money($chg)) ?>, שולם <?= e(money($chp)) ?> (פירוט בעמוד <a href="charges.php">גביות חד־פעמיות</a>).</p>
 <?php page_foot();
