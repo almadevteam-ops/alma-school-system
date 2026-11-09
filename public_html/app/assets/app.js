@@ -240,4 +240,39 @@
     function sched() { clearTimeout(tmr); tmr = setTimeout(run, 250); }
     amt.addEventListener('input', sched); tg.addEventListener('change', sched); fm.addEventListener('change', sched);
   })();
+  // דיוור: ספירת נמענים חיה בטופס, ושליחה בהדרגה עם התקדמות
+  (function () {
+    var f = document.getElementById('mailform');
+    if (f) {
+      var out = document.getElementById('mailn'), tmr = null;
+      var run = function () {
+        var p = new URLSearchParams();
+        f.querySelectorAll('input[name="g[]"]:checked,input[name="c[]"]:checked').forEach(function (i) { p.append(i.name, i.value); });
+        p.append('debt', f.elements.debt.value);
+        fetch(f.getAttribute('data-url') + '&' + p.toString(), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
+          out.textContent = 'ההודעה תישלח ל-' + j.n + ' כתובות מייל' + (j.nomail ? ' (' + j.nomail + ' תלמידות בלי מייל תקין בכרטיס)' : '') + '.';
+        }).catch(function () { out.textContent = ''; });
+      };
+      f.addEventListener('change', function () { clearTimeout(tmr); tmr = setTimeout(run, 200); }); run();
+    }
+    var box = document.getElementById('mailrun'); if (!box) return;
+    var go = false, busy = false, pg = box.parentNode.querySelector('progress');
+    var set = function (k, v) { var el = box.querySelector('[data-k=' + k + ']'); if (el) el.textContent = v; };
+    var post = function (a) { var b = new URLSearchParams({ act: a, id: box.getAttribute('data-id'), _t: box.getAttribute('data-t') }); return fetch('mailing.php', { method: 'POST', credentials: 'same-origin', body: b }); };
+    var step = function () {
+      if (!go || busy) return; busy = true;
+      post('step').then(function (r) { return r.json(); }).then(function (j) {
+        busy = false; set('sent', j.sent); set('failed', j.failed); set('pending', j.pending);
+        if (pg) pg.value = j.sent + j.failed;
+        if (j.pending > 0 && go) { set('st', 'בשליחה'); setTimeout(step, 300); }
+        else { go = false; set('st', j.pending > 0 ? 'נעצר' : 'הסתיים'); if (!j.pending) box.querySelectorAll('button[data-a]').forEach(function (x) { x.hidden = true; }); set('note', j.pending > 0 ? '' : 'הסתיים. ' + (j.failed ? 'חלק מהכתובות נכשלו – רענני את הדף לרשימה ולניסיון חוזר.' : 'כל ההודעות נשלחו.')); }
+      }).catch(function () { busy = false; go = false; set('note', 'התקשורת נפסקה. לחצי "התחלת / המשך שליחה" כדי להמשיך מהמקום שבו עצרנו.'); });
+    };
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-a]'); if (!b) return;
+      if (b.getAttribute('data-a') === 'start') { go = true; step(); }
+      else { go = false; post('stop').then(function () { location.reload(); }); }
+    });
+    if (box.getAttribute('data-go') === '1') { go = true; step(); }
+  })();
 })();

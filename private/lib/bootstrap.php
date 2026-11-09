@@ -46,6 +46,7 @@ require_once __DIR__ . '/migrate.php';
 require_once __DIR__ . '/files.php';
 require_once __DIR__ . '/import.php';
 require_once __DIR__ . '/collection.php';
+require_once __DIR__ . '/mailing.php';
 require_once __DIR__ . '/notes.php';
 require_once __DIR__ . '/mfa_email.php';
 require_once __DIR__ . '/backup.php';
@@ -190,17 +191,19 @@ function page_head(string $title, bool $nav = true): void {
      . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="icon" href="/app/assets/favicon.ico?v=' . asset_v('favicon.ico') . '" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/app/assets/icon-32.png?v=' . asset_v('icon-32.png') . '"><link rel="icon" type="image/png" sizes="192x192" href="/app/assets/icon-192.png?v=' . asset_v('icon-192.png') . '"><link rel="apple-touch-icon" href="/app/assets/apple-touch-icon.png?v=' . asset_v('apple-touch-icon.png') . '"><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"><script src="/app/assets/app.js?v=' . asset_v('app.js') . '" defer></script></head><body>';
   if ($nav && ($u = user())) {
     $cur = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
-    $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'payments_import.php' => 'collection.php', 'monthly.php' => 'collection.php', 'charges.php' => 'collection.php', 'gad.php' => 'collection.php', 'income_import.php' => 'collection.php', 'registrations.php' => 'students.php', 'moe_sync.php' => 'students.php', 'oldsync.php' => 'import.php', 'rollover.php' => 'import.php', 'exports.php' => 'import.php'];
+    $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'payments_import.php' => 'collection.php', 'monthly.php' => 'collection.php', 'dashboard.php' => 'collection.php', 'charges.php' => 'collection.php', 'gad.php' => 'collection.php', 'income_import.php' => 'collection.php', 'registrations.php' => 'students.php', 'moe_sync.php' => 'students.php', 'oldsync.php' => 'import.php', 'rollover.php' => 'import.php', 'exports.php' => 'import.php'];
     $on = $alias[$cur] ?? $cur;
     $ic = fn(string $d) => '<svg class="ni" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $d . '</svg>';
     $icons = [
       'students.php' => '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .7 3.2 2.4 3.5 5.2"/>',
       'collection.php' => '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M16.5 15h1.5"/>',
+      'mailing.php' => '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/>',
       'security.php' => '<path d="M12 3l7.5 3v5.5c0 4.5-3 8-7.5 9.5-4.5-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
       'admin' => '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>',
     ];
     echo '<header class="top"><a class="brand" href="students.php"><img src="/app/assets/logo-mark.png" alt="" width="30" height="30"><b>עלמא</b></a><nav>';
-    foreach (['students.php' => 'תלמידות', 'collection.php' => 'גבייה', 'security.php' => 'אבטחה'] as $f => $l)
+    $main = ['students.php' => 'תלמידות', 'collection.php' => 'גבייה']; if (in_array($u['role'], ['admin', 'secretary'], true)) $main['mailing.php'] = 'דיוור'; $main['security.php'] = 'אבטחה';
+    foreach ($main as $f => $l)
       echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . ' title="' . e($l) . '">' . $ic($icons[$f]) . '<span>' . e($l) . '</span></a>';
     if ($u['role'] === 'admin') {
       $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'backups.php' => 'גיבויים', 'archive.php' => 'ארכיון', 'geo.php' => 'ערים ורחובות', 'settings.php' => 'הגדרות', 'release_notes.php' => 'מה חדש', 'health.php' => 'בדיקת מערכת'];

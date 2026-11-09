@@ -237,3 +237,16 @@ tr.pendrow td { vertical-align: top; }
 .alertbar { background: #fbeceb; border: 1px solid #efc3bf; border-radius: 10px; padding: 10px 14px; margin: 10px 0; }
 .mc.fut{background:#eee9ec;color:#a79ba3}.mb.fut{background:#eee9ec;color:var(--mu)}
 .futrow td{color:var(--mu)}
+/* דיוור ודשבורד */
+.mailform fieldset,.mpick{border:1px solid var(--ln);border-radius:14px;padding:12px 16px;margin:0 0 14px;background:#fff}
+.mailform legend,.mpick legend{font-weight:700;padding:0 6px}
+.mailn{font-weight:700;color:var(--ac);margin:8px 0 0}
+.mailpg{width:100%;height:14px;margin:6px 0 10px;accent-color:var(--gr)}
+.mailtxt{white-space:pre-wrap;font:inherit;background:#fff;border:1px solid var(--ln);border-radius:12px;padding:12px}
+.mpick{display:flex;flex-wrap:wrap;gap:6px 16px}.mpick legend{float:none}.mpick label.chk{font-size:14px;color:var(--ink)}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px}
+.dtab td,.dtab th{white-space:nowrap}.dtab tr.off td{color:var(--mu);background:#faf8f9}.dtab tr.tot td{border-top:2px solid var(--ln);font-weight:700}
+.dtab td.wbar{width:120px;min-width:90px}
+.pbar{width:100%;height:8px;display:block}.pbar .bg{fill:#eee9ec}.pbar .fg{fill:var(--gr)}
+.mailform.fg{display:block;max-width:760px}.mailform>label{display:flex;flex-direction:column;gap:4px;margin:0 0 12px}.mailform input:not([type=checkbox]),.mailform select,.mailform textarea{width:100%;box-sizing:border-box}
+.mailform .bar{margin:12px 0}.mailform .bar label{max-width:320px}
