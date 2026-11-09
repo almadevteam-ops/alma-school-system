@@ -10,7 +10,12 @@ ini_set('log_errors', '1');
 
 function cfg(string $k, $d = null) { global $CFG; return $CFG[$k] ?? $d; }
 function is_https(): bool { return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? '') === '443'); }
-function e($v): string { return htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+/** נתונים מבחוץ (משרד החינוך, אקסל) מגיעים לעיתים בסדר חזותי הפוך: ")אסייה(" במקום "(אסייה)". מחליף רק תבנית הפוכה בבירור. */
+function bidi_fix($v): string {
+  $v = (string)$v;
+  return (strpos($v, ')') !== false && strpos($v, '(') !== false) ? (string)preg_replace_callback('/\)([^()]*)\(/u', fn($m) => '(' . $m[1] . ')', $v) : $v;
+}
+function e($v): string { return htmlspecialchars(bidi_fix($v), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function client_ip(): string { return substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45); }
 function now(): string { return date('Y-m-d H:i:s'); }
 function redirect(string $to): never { header('Location: ' . $to); exit; }
@@ -182,7 +187,7 @@ function audit(string $action, string $entity = '', string $id = '', string $det
 function asset_v(string $f): string { $p = ($_SERVER['DOCUMENT_ROOT'] ?? '') . '/app/assets/' . $f; return is_file($p) ? (string)filemtime($p) : '1'; }
 function page_head(string $title, bool $nav = true): void {
   echo '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-     . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"><script src="/app/assets/app.js?v=' . asset_v('app.js') . '" defer></script></head><body>';
+     . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="icon" href="/app/assets/favicon.ico?v=' . asset_v('favicon.ico') . '" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/app/assets/icon-32.png?v=' . asset_v('icon-32.png') . '"><link rel="icon" type="image/png" sizes="192x192" href="/app/assets/icon-192.png?v=' . asset_v('icon-192.png') . '"><link rel="apple-touch-icon" href="/app/assets/apple-touch-icon.png?v=' . asset_v('apple-touch-icon.png') . '"><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"><script src="/app/assets/app.js?v=' . asset_v('app.js') . '" defer></script></head><body>';
   if ($nav && ($u = user())) {
     $cur = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
     $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'payments_import.php' => 'collection.php', 'monthly.php' => 'collection.php', 'charges.php' => 'collection.php', 'gad.php' => 'collection.php', 'income_import.php' => 'collection.php', 'registrations.php' => 'students.php', 'moe_sync.php' => 'students.php', 'oldsync.php' => 'import.php', 'rollover.php' => 'import.php', 'exports.php' => 'import.php'];

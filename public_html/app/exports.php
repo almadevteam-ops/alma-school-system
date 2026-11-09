@@ -2,7 +2,7 @@
 require __DIR__ . '/../../private/lib/bootstrap.php';
 $u = require_role(['admin', 'secretary', 'finance']);
 $ids = can_see_ids(); $col = in_array($u['role'], COLLECTION_ROLES, true);
-function csv_cell($v): string { $v = (string)$v; return ($v !== '' && strpos("=+-@\t\r", $v[0]) !== false) ? "'" . $v : $v; }
+function csv_cell($v): string { $v = bidi_fix($v); return ($v !== '' && strpos("=+-@\t\r", $v[0]) !== false) ? "'" . $v : $v; }
 function csv_out(string $file, array $head, array $rows): void {
   header('Content-Type: text/csv; charset=utf-8'); header('Content-Disposition: attachment; filename="' . $file . '"');
   $o = fopen('php://output', 'w'); fwrite($o, "\xEF\xBB\xBF"); fputcsv($o, array_map('csv_cell', $head), ',', '"', '');
