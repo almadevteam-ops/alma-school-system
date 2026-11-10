@@ -226,14 +226,13 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <label id="lmwrap"<?= $val('status') === 'left' ? '' : ' hidden' ?>>עזבה מחודש<select name="left_month"<?= ($ro || !$isAdmin) ? ' disabled' : '' ?>><option value="">—</option><?php foreach (SCHOOL_MONTHS as $i => $mn) echo '<option value="' . ($i + 1) . '"' . ((int)$val('left_month') === $i + 1 ? ' selected' : '') . '>' . e($mn) . '</option>'; ?></select></label>
   <?php if ($isAdmin && $id): ?><label class="wide" id="stnote"<?= (($val('status_note') ?? '') === '') ? ' hidden' : '' ?>>סיבת שינוי הסטטוס (חובה)<input name="status_note" maxlength="500" value="<?= e((string)($row['status_note'] ?? '')) ?>" placeholder="למשל: עברה למוסד אחר"></label><?php endif; ?>
   </div>
-  <?php if (geo_ready() && !$ro): ?><datalist id="geo-cities"></datalist><datalist id="geo-streets"></datalist><p class="mu">כתובת: קודם בוחרים עיר מהרשימה, אחר כך רחוב מהרשימה, ורק אז מקלידים מספר בית.</p><?php endif; ?>
+  <?php if (geo_ready() && !$ro): ?><datalist id="geo-cities"></datalist><datalist id="geo-streets"></datalist><?php endif; ?>
   <?php if (!$id && !$ro): ?>
   <fieldset class="spbox" data-mode="new">
-    <legend>תעודת זהות הורה וספח (לא חובה)</legend>
-    <p class="mu">הספח נקרא אוטומטית: האחים והאחיות נכנסים למאגר הרישום העתידי. אפשר גם בלי, ולהוסיף מאוחר יותר מכרטיס התלמידה.</p>
+    <legend>תעודת זהות אחד ההורים + ספח מלא</legend>
+    <p class="mu">קובץ אחד (תמונה או PDF) שמכיל את תעודת הזהות של אחד ההורים ואת הספח המלא. הספח נקרא אוטומטית: האחים והאחיות נכנסים למאגר הרישום העתידי. אפשר גם בלי, ולהוסיף מאוחר יותר מכרטיס התלמידה.</p>
     <div class="fg">
-      <label>תעודת זהות של אחד ההורים<input type="file" name="parent_id[]" multiple accept="image/jpeg,image/png,image/webp,application/pdf"></label>
-      <label>ספח מלא (תמונה או PDF)<input type="file" name="spach[]" multiple data-spfile accept="image/jpeg,image/png,image/webp,application/pdf"></label>
+      <label>קובץ תעודת זהות + ספח<input type="file" name="spach[]" data-spfile accept="image/jpeg,image/png,image/webp,application/pdf"></label>
     </div>
     <input type="hidden" name="sp_src" value="ocr">
     <p class="spstat" aria-live="polite"></p>
