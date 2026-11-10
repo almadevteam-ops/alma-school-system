@@ -15,6 +15,8 @@ const ID_FIELDS = ['idn', 'f_id', 'm_id'];
 const PHONE_FIELDS = ['phone', 'f_phone', 'm_phone', 'home_phone'];
 /** שדות שרק מנהלת מערכת יכולה לערוך בכרטיס של תלמידה קיימת. */
 const REQUIRED = ['name', 'grade'];
+/** שדות חובה נוספים ביצירת תלמידה חדשה (כמו בטופס ההרשמה). */
+const REQUIRED_NEW = ['idn'];
 const ADMIN_ONLY = ['name', 'idn', 'f_name', 'm_name', 'f_id', 'm_id'];
 $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $err = ''; $msg = '';
@@ -84,6 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $chg = fn(string $k) => !$row || (string)$row[$k] !== (string)$d[$k];   // בדיקות תקינות רק על מה ששונה (נתונים ישנים לא חוסמים שמירה)
   if ($d['name'] === '') $err = 'נא למלא שם.';
   elseif (!in_array($d['grade'], GRADES, true)) $err = 'נא לבחור כיתה.';
+  elseif (!$id && can_see_ids() && ($d['idn'] === '' || !preg_match('/^\d{9}$/', $d['idn']) || !valid_il_id($d['idn']))) $err = 'תלמידה חדשה: יש להקליד מספר זהות תקין של התלמידה.';
+  elseif (!$id && $d['f_phone'] === '' && $d['m_phone'] === '') $err = 'תלמידה חדשה: נא למלא לפחות טלפון אחד של אחד ההורים.';
+  elseif (!$id && $d['idn'] !== '' && ($dup = db()->prepare('SELECT name FROM students WHERE idn = ? LIMIT 1')) && $dup->execute([$d['idn']]) && ($dn = $dup->fetchColumn()) !== false) $err = 'כבר קיימת תלמידה עם מספר הזהות הזה (' . $dn . ').';
   elseif ($d['disc_on'] && $d['disc_amt'] <= 0) $err = 'הנחה: יש להזין סכום גדול מאפס.';
   elseif ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $err = 'כתובת האימייל לא תקינה.';
   elseif ($dobIn !== '' && dob_iso($dobIn) === '') $err = 'תאריך הלידה לא תקין.';
@@ -147,7 +152,8 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     if ($sens && !can_see_ids()) continue;
     $lock = $ro || ($id && !$isAdmin && in_array($k, ADMIN_ONLY, true));
     $dis = $lock ? ' disabled' : '';
-    $req = in_array($k, REQUIRED, true) && !$lock; $star = in_array($k, REQUIRED, true) ? ' <span class="req" title="שדה חובה">*</span>' : '';
+    $isReq = in_array($k, REQUIRED, true) || (!$id && in_array($k, REQUIRED_NEW, true)); $req = $isReq && !$lock; $star = $isReq ? ' <span class="req" title="שדה חובה">*</span>' : '';
+    if (!$id && in_array($k, ['f_phone', 'm_phone'], true)) $star = ' <span class="req" title="נדרש טלפון של לפחות אחד ההורים">*</span>';
     $reqa = $req ? ' required' : '';
     if ($k === 'grade') {
       echo '<label><span>' . e($lbl) . $star . '</span><select name="grade"' . ($ro ? ' disabled' : '') . $reqa . '><option value=""></option>';
