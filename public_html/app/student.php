@@ -274,7 +274,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
       <td>
         <a class="btn sec" href="file.php?id=<?= (int)$f['id'] ?>" target="_blank" rel="noopener">צפייה</a>
         <a class="btn sec" href="file.php?id=<?= (int)$f['id'] ?>&dl=1">הורדה</a>
-        <?php if (can_edit() && in_array($f['kind'], ['id', 'spach'], true) && in_array($f['mime'], ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], true)): ?><button type="button" class="btn sec" data-spach="file.php?id=<?= (int)$f['id'] ?>&amp;dl=1" data-mime="<?= e($f['mime']) ?>">קריאת ספח</button><?php endif; ?>
+        <?php if (can_edit() && in_array($f['kind'], ['id', 'spach'], true) && in_array($f['mime'], ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], true)): ?><button type="button" class="btn sec" data-spach="file.php?id=<?= (int)$f['id'] ?>&amp;dl=1" data-mime="<?= e($f['mime']) ?>">קריאה חוזרת</button><?php endif; ?>
         <?php if ($u['role'] === 'admin'): ?>
         <form method="post" action="file_upload.php" class="inl"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="delete"><input type="hidden" name="fid" value="<?= (int)$f['id'] ?>"><button class="dg">מחיקה</button></form>
         <?php endif; ?>
@@ -305,10 +305,16 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     <tr><th>שם</th><th>ת״ז</th><th>תאריך לידה</th><th>מין</th><th>כניסה לז׳</th><th></th></tr>
     <?php foreach ($ll as $l): $ey = lead_entry_year((string)$l['dob']); ?>
     <tr><td><?= e(trim($l['first_name'] . ' ' . $l['last_name']) ?: 'שם לא נקרא') ?></td><td dir="ltr"><?= e($l['idn']) ?></td><td><?= $l['dob'] ? e(date('d/m/Y', strtotime($l['dob']))) : '<span class="mu">—</span>' ?></td><td><?= e(LEAD_GENDER[$l['gender']] ?? '—') ?></td><td><?= $ey ? e(heb_school_year($ey)) : '—' ?></td>
-    <td><?php if (can_edit()): ?><form method="post" action="leads_save.php" class="inl"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="unlink"><input type="hidden" name="lead" value="<?= (int)$l['id'] ?>"><button class="btn sec">הסרה</button></form><?php endif; ?></td></tr>
+    <td><?php if (can_edit()): ?><details class="mt"><summary class="btn sec">עריכה</summary>
+      <form method="post" action="leads_save.php" class="fg"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="edit_lead"><input type="hidden" name="lead" value="<?= (int)$l['id'] ?>">
+        <label>שם פרטי<input name="fn" maxlength="60" value="<?= e($l['first_name']) ?>"></label><label>שם משפחה<input name="ln" maxlength="60" value="<?= e($l['last_name']) ?>"></label>
+        <label>תאריך לידה<input type="date" name="dob" dir="ltr" value="<?= e((string)$l['dob']) ?>"></label>
+        <label>מין<select name="g"><option value="">—</option><?php foreach (LEAD_GENDER as $gk => $gv) echo '<option value="' . $gk . '"' . ($l['gender'] === $gk ? ' selected' : '') . '>' . e($gv) . '</option>'; ?></select></label>
+        <div class="acts"><button class="btn">עדכון</button></div></form></details>
+      <form method="post" action="leads_save.php" class="inl"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="unlink"><input type="hidden" name="lead" value="<?= (int)$l['id'] ?>"><button class="btn sec">הסרה</button></form><?php endif; ?></td></tr>
     <?php endforeach; ?>
   </table></div>
-  <?php else: ?><p class="mu">עדיין לא נוספו אחים ואחיות. הקריאה מתבצעת מהכפתור "קריאת ספח" ליד קובץ הספח בקטע "מסמכים", או בהקלדה ידנית.</p><?php endif; ?>
+  <?php else: ?><p class="mu">עדיין לא נוספו אחים ואחיות. הקריאה מתבצעת אוטומטית עם העלאת קובץ ספח או תעודת זהות בקטע "מסמכים", או בהקלדה ידנית.</p><?php endif; ?>
   <p class="spstat" aria-live="polite"></p>
   <?php if (can_edit()): ?>
   <button type="button" class="btn sec" data-spopen>＋ הוספה ידנית</button>

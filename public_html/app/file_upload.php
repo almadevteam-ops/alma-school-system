@@ -22,6 +22,7 @@ if ($act === 'delete') {
 }
 $kind = (string)($_POST['kind'] ?? 'id');
 $ok = 0; $errs = [];
+$maxBefore = (int)db()->query('SELECT COALESCE(MAX(id), 0) FROM student_files')->fetchColumn();
 $files = $_FILES['f'] ?? null;
 if ($files && is_array($files['name'])) {
   foreach ($files['name'] as $i => $n) {
@@ -32,4 +33,9 @@ if ($files && is_array($files['name'])) {
   }
 } else { $errs[] = 'לא נבחר קובץ.'; }
 $m = ($ok ? 'הועלו ' . $ok . ' מסמכים. ' : '') . implode(' | ', $errs);
-redirect($back . '&open=docs&' . ($errs ? 'e=' : 'm=') . rawurlencode($m));
+$auto = '';
+if ($ok && in_array($kind, ['id', 'spach', 'parent_id'], true) && can_edit()) {   // קובץ ספח/ת״ז שהועלה נקרא מיד בדפדפן
+  $q = db()->prepare("SELECT id FROM student_files WHERE student_id = ? AND kind = ? AND id > ? ORDER BY id"); $q->execute([$sid, $kind, $maxBefore]);
+  $auto = implode(',', array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN)));
+}
+redirect($back . '&open=docs' . ($auto ? ',leads&autoread=' . $auto : '') . '&' . ($errs ? 'e=' : 'm=') . rawurlencode($m));

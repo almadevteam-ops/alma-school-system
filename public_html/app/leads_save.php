@@ -16,6 +16,16 @@ if ($act === 'unlink') {
   audit('lead_unlink', 'student', (string)$sid, (string)$lid);
   redirect('student.php?id=' . $sid . '&open=leads&m=' . rawurlencode('הקישור הוסר.'));
 }
+if ($act === 'edit_lead') {
+  $lid = (int)($_POST['lead'] ?? 0);
+  $q = db()->prepare('SELECT l.* FROM sibling_leads l JOIN sibling_lead_links k ON k.lead_id = l.id WHERE l.id = ? AND k.student_id = ?'); $q->execute([$lid, $sid]); $L = $q->fetch();
+  if (!$L) fail_page(404, 'הרשומה לא נמצאה.');
+  [$r, $e1] = lead_clean(['idn' => $L['idn'], 'ln' => $_POST['ln'] ?? '', 'fn' => $_POST['fn'] ?? '', 'dob' => $_POST['dob'] ?? '', 'g' => $_POST['g'] ?? ''], 'manual', []);
+  if (!$r) redirect('student.php?id=' . $sid . '&open=leads&e=' . rawurlencode($e1));
+  db()->prepare('UPDATE sibling_leads SET last_name = ?, first_name = ?, dob = ?, gender = ?, updated_at = ? WHERE id = ?')->execute([$r['ln'], $r['fn'], $r['dob'] ?: null, $r['g'], now(), $lid]);
+  audit('lead_edit', 'student', (string)$sid, (string)$lid);
+  redirect('student.php?id=' . $sid . '&open=leads&m=' . rawurlencode('הפרטים עודכנו.'));
+}
 $o = leads_store($sid, (array)($_POST['sp'] ?? []), $src, $who);
 $msg = leads_msg($o);
 if (!empty($_POST['json'])) {

@@ -288,6 +288,22 @@
     if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d || y < 1985 || dt > new Date()) return '';
     return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
   }
+  var SP_GEM = { 'ת': 400, 'ש': 300, 'ר': 200, 'ק': 100, 'צ': 90, 'פ': 80, 'ע': 70, 'ס': 60, 'נ': 50, 'מ': 40, 'ל': 30, 'כ': 20, 'י': 10, 'ט': 9, 'ח': 8, 'ז': 7, 'ו': 6, 'ה': 5, 'ד': 4, 'ג': 3, 'ב': 2, 'א': 1 };
+  // שנה עברית כמו התשע"ו → 5776 (או 0 אם לא נראית כשנה)
+  function spHebYear(t) {
+    var h = t.replace(/[.,:;|!()\[\]_*~'"׳״]/g, ''); if (!/^התש[א-ת]{1,2}$/.test(h)) return 0;
+    var n = 5000; for (var i = 1; i < h.length; i++) n += SP_GEM[h[i]] || 0;
+    return n >= 5750 && n <= 5800 ? n : 0;
+  }
+  // תיקון ספרה בודדת בשנה הלועזית לפי השנה העברית (חודשים ינואר-אוגוסט: עברית-3760, אוקטובר-דצמבר: עברית-3761)
+  function spFixYear(iso, hy) {
+    if (!iso || !hy) return iso;
+    var y = +iso.slice(0, 4), mo = +iso.slice(5, 7), ok = [hy - 3761, hy - 3760];
+    if (ok.indexOf(y) >= 0) return iso;
+    var want = mo <= 8 ? hy - 3760 : mo >= 10 ? hy - 3761 : 0; if (!want) return iso;
+    var a = String(y), b = String(want), n = 0; for (var i = 0; i < 4; i++) if (a[i] !== b[i]) n++;
+    return n === 1 ? want + iso.slice(4) : iso;
+  }
   function spIsNameWord(h) {
     if (h.length < 2 || SP_MALE.test(h) || SP_FEM.test(h)) return false;
     if (/מעמד|ישראלית|אזרחות|התש|תשע|תשפ/.test(h) || /['"׳״]/.test(h) && h.length <= 5) return false;
@@ -341,10 +357,11 @@
         var inX = function (w) { return w.cx >= c.x0 - W * 0.05 && w.cx <= c.x0 + W * 0.42; };
         var nameWs = ws.filter(function (w) { return inX(w) && w.cy >= c.cy - H * 0.075 && w.cy <= c.cy + H * 0.012; }).map(function (w) { return { h: spHebWord(w.t), w: w }; }).filter(function (o) { return o.h && spIsNameWord(o.h); });
         var nl = []; nameWs.sort(function (a, b) { return a.w.cy - b.w.cy; }).forEach(function (o) { var L = nl[nl.length - 1]; if (L && Math.abs(o.w.cy - L.cy) <= H * 0.012) L.t.push(o); else nl.push({ cy: o.w.cy, t: [o] }); });
+        if (nl.length >= 3) nl.pop();   // השורה הצמודה למספר הזהות היא שורת המין (גם אם נקראה משובשת)
         var strs = nl.map(function (L) { return L.t.sort(function (a, b) { return b.w.x1 - a.w.x1; }).map(function (o) { return o.h; }).join(' '); });
         var g = ''; ws.forEach(function (w) { if (g || !inX(w) || w.cy < c.cy - H * 0.06 || w.cy > c.cy + H * 0.03) return; var h = spHebWord(w.t); if (SP_MALE.test(h)) g = 'm'; else if (SP_FEM.test(h)) g = 'f'; });
-        var dob = '', bd = 1e9; ws.forEach(function (w) { if (!inX(w) || w.cy < c.cy - H * 0.012 || w.cy > c.cy + H * 0.07) return; var d = spDate(w.t); if (d && Math.abs(w.cy - c.cy) < bd) { bd = Math.abs(w.cy - c.cy); dob = d; } });
-        children.push({ idn: c.s, lines: strs, g: g, dob: dob, y: c.cy, x: c.cx });
+        var dob = '', bd = 1e9, dw = null; ws.forEach(function (w) { if (!inX(w) || w.cy < c.cy - H * 0.012 || w.cy > c.cy + H * 0.07) return; var d = spDate(w.t); if (d && Math.abs(w.cy - c.cy) < bd) { bd = Math.abs(w.cy - c.cy); dob = d; dw = w; } });
+        children.push({ idn: c.s, lines: strs, g: g, dob: dob, y: c.cy, x: c.cx, x0: c.x0 });
       } else if (hasStatus(c) && !cands.some(function (v) { return v.valid && Math.abs(v.cx - c.cx) < W * 0.05 && Math.abs(v.cy - c.cy) < H * 0.02; })) {
         bad.push({ s: c.s, x: c.cx, y: c.cy });
       }
@@ -366,7 +383,7 @@
     if (fn_ < 3 * list.length) famTop = '';   // שם משפחה משותף מוכר רק אם חוזר מספיק (כותרת + בלוקים)
     list.forEach(function (r) {
       r.children.forEach(function (c) {
-        var o = by[c.idn]; if (!o) { o = by[c.idn] = { idn: c.idn, v: {} }; order.push(c.idn); }
+        var o = by[c.idn]; if (!o) { o = by[c.idn] = { idn: c.idn, v: {}, pos: { pi: c.pi || 0, x0: c.x0, y: c.y } }; order.push(c.idn); }
         var lines = c.lines.map(function (l) { return famTop ? l.split(' ').filter(function (x) { return x !== famTop; }).join(' ').trim() : l; }).filter(function (l) { return l; });
         if (famTop && c.lines.join(' ').split(' ').indexOf(famTop) < 0 && c.lines.length >= 2) lines = c.lines.slice(1);
         vote(o, 'fn', famTop ? lines.join(' ') : (c.lines.length >= 2 ? c.lines.slice(1).join(' ') : c.lines.join(' ')));
@@ -374,7 +391,7 @@
         vote(o, 'g', c.g); vote(o, 'dob', c.dob);
       });
     });
-    var kids = order.map(function (k) { var o = by[k]; return { idn: k, ln: famTop || top(o.v.ln), fn: top(o.v.fn), g: top(o.v.g), dob: top(o.v.dob) }; });
+    var kids = order.map(function (k) { var o = by[k]; return { idn: k, ln: famTop || top(o.v.ln), fn: top(o.v.fn), g: top(o.v.g), dob: top(o.v.dob), pos: o.pos, dv: o.v.dob || {}, gv: o.v.g || {} }; });
     var bad = [];
     list.forEach(function (r) { r.bad.forEach(function (b) { if (!order.some(function (s) { return spHamming(s, b.s) <= 2 || spLev(s, b.s) <= 3; }) && bad.indexOf(b.s) < 0) bad.push(b.s); }); });
     return { children: kids, bad: bad, markers: M, ok: kids.length > 0 && M > 0 && bad.length === 0 && kids.length >= M };
@@ -405,7 +422,7 @@
     }).then(function (w) { return w.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' }).then(function () { return w; }); });
   }
   function spFit(src, sw, sh, maxSide) {
-    var k = Math.min(1, maxSide / Math.max(sw, sh)), c = document.createElement('canvas'); c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+    var k = Math.max(sw, sh) < maxSide * 0.8 ? maxSide * 0.8 / Math.max(sw, sh) : Math.min(1, maxSide / Math.max(sw, sh)), c = document.createElement('canvas'); c.width = Math.round(sw * k); c.height = Math.round(sh * k);
     var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(src, 0, 0, c.width, c.height); return c;
   }
   // קובץ (תמונה או PDF) → רשימת קנבסים (עמודים)
@@ -452,17 +469,67 @@
             if (merged && merged.ok && merged.children.every(function (k) { return k.dob; })) return;
             say('קורא את הספח… (שלב ' + (vi + 1) + ' מתוך ' + variants.length + ')');
             var per = [], c2 = Promise.resolve();
-            pages.forEach(function (pg) {
-              c2 = c2.then(function () { var v = spVariant(pg, T); return w.recognize(v, {}, { blocks: true }); }).then(function (r) { per.push(spParse(spWordsOf(r.data), pg.width, pg.height, exclude)); });
+            pages.forEach(function (pg, pi) {
+              c2 = c2.then(function () { var v = spVariant(pg, T); return w.recognize(v, {}, { blocks: true }); }).then(function (r) { var pr = spParse(spWordsOf(r.data), pg.width, pg.height, exclude); pr.children.forEach(function (c) { c.pi = pi; }); per.push(pr); });
             });
             return c2.then(function () { tried.push(spCombine(per)); merged = spMerge(tried); });
           });
         });
-        return chain.then(function () { return merged; });
+        return chain.then(function () { return spFill(w, pages, merged, say); });
       });
     });
   }
-  window.__spach = { parse: spParse, merge: spMerge, read: spRead };
+  // השלמת תאריך לידה ומין שחסרים: קריאה חוזרת של אזור הילד בלבד, בהגדלה
+  function spFill(w, pages, merged, say) {
+    var todo = merged.children.filter(function (k) { return k.pos && pages[k.pos.pi]; });
+    if (!todo.length) return merged;
+    say('בודקת תאריכי לידה ומין…');
+    function add(m, v, n) { if (v) m[v] = (m[v] || 0) + (n || 1); }
+    function top(m) { var best = '', n = 0; for (var k in m) if (m[k] > n) { n = m[k]; best = k; } return best; }
+    var chain = w.setParameters({ tessedit_pageseg_mode: '6' });
+    todo.forEach(function (k) {
+      chain = chain.then(function () {
+        var pg = pages[k.pos.pi], W = pg.width, H = pg.height;
+        var x0 = Math.max(0, Math.round(k.pos.x0 - W * 0.05)), x1 = Math.min(W, Math.round(k.pos.x0 + W * 0.42)), y0 = Math.max(0, Math.round(k.pos.y - H * 0.065)), y1 = Math.min(H, Math.round(k.pos.y + H * 0.08));
+        var cw = x1 - x0, ch = y1 - y0, sc = Math.min(3, 1800 / cw), cr = document.createElement('canvas'); cr.width = Math.round(cw * sc); cr.height = Math.round(ch * sc);
+        var cx = cr.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cr.width, cr.height); cx.drawImage(pg, x0, y0, cw, ch, 0, 0, cr.width, cr.height);
+        var vs = [spVariant(cr, 110), spVariant(cr, 0), spVariant(cr, 140)], c2 = Promise.resolve(), hys = {}, boxes = [];
+        vs.forEach(function (v) {
+          c2 = c2.then(function () { return w.recognize(v, {}, { blocks: true }); }).then(function (r) {
+            if (!r || !r.data) return;
+            spWordsOf(r.data).forEach(function (o) {
+              var t = spClean(o.t), d = spDate(t), hy = spHebYear(t), h = spHebWord(t);
+              if (/\d[.\/\-]\d/.test(t) && t.replace(/\D/g, '').length >= 6 && o.x1 - o.x0 > 30) boxes.push({ v: v, o: o });
+              if (d) add(k.dv, d, 1); if (hy) hys[hy] = 1;
+              if (SP_MALE.test(h)) add(k.gv, 'm', 1); else if (SP_FEM.test(h)) add(k.gv, 'f', 1);
+            });
+          });
+        });
+        // קריאה צמודה של שורת התאריך עצמה (ספרות בלבד), בהגדלה
+        c2 = c2.then(function () { return w.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '0123456789.' }); });
+        c2 = c2.then(function () {
+          var seen = [], ch2 = Promise.resolve();
+          boxes.forEach(function (b) {
+            if (seen.some(function (s2) { return Math.abs(s2.y0 - b.o.y0) < 25 && Math.abs(s2.x0 - b.o.x0) < 60; })) return; seen.push(b.o);
+            var pad = 12, bw = b.o.x1 - b.o.x0 + 2 * pad, bh = b.o.y1 - b.o.y0 + 2 * pad, k2 = Math.min(4, 110 / Math.max(10, b.o.y1 - b.o.y0));
+            var src = b.v, t = document.createElement('canvas'); t.width = Math.round(bw * k2); t.height = Math.round(bh * k2);
+            var tx = t.getContext('2d'); tx.fillStyle = '#fff'; tx.fillRect(0, 0, t.width, t.height); tx.drawImage(src, b.o.x0 - pad, b.o.y0 - pad, bw, bh, 0, 0, t.width, t.height);
+            [0, 120, 150].forEach(function (T) { ch2 = ch2.then(function () { return w.recognize(T ? spVariant(t, T) : t, {}, { blocks: true }); }).then(function (r) { var tt = r && r.data && r.data.text ? r.data.text : ''; var d = spDate(tt.replace(/\s+/g, '')); if (d) add(k.dv, d, 1); }); });
+          });
+          return ch2;
+        });
+        c2 = c2.then(function () { return w.setParameters({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' }); });
+        return c2.then(function () {
+          var hl = Object.keys(hys).map(Number), fixed = {};
+          for (var d in k.dv) add(fixed, d, k.dv[d]);
+          hl.forEach(function (hy) { for (var d in fixed) { var y = +d.slice(0, 4); if (y === hy - 3760 || y === hy - 3761) fixed[d] += 1; } });
+          k.dob = top(fixed); k.g = top(k.gv) || k.g;
+        });
+      });
+    });
+    return chain.then(function () { return w.setParameters({ tessedit_pageseg_mode: '11' }); }).then(function () { return merged; });
+  }
+    window.__spach = { parse: spParse, merge: spMerge, read: spRead };
 
   // ---- ממשק: אזור קריאת ספח בטופס תלמידה חדשה ובכרטיס ----
   function spEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -486,10 +553,10 @@
     function renumber() {
       var n = 0; rowsEl.querySelectorAll('tr.sprow').forEach(function (tr) { tr.querySelectorAll('[data-f]').forEach(function (el) { el.name = 'sp[' + n + '][' + el.getAttribute('data-f') + ']'; }); n++; });
     }
-    function showManual(rows, msg) {
-      hid.textContent = ''; if (srcIn) srcIn.value = 'manual';
+    function showManual(rows, msg, cls, srcVal) {
+      hid.textContent = ''; if (srcIn) srcIn.value = srcVal || 'manual';
       rowsEl.innerHTML = ''; var tb = document.createElement('table'); tb.innerHTML = '<tbody>' + (rows.length ? rows : [{ fn: '', ln: '', idn: '', dob: '', g: '' }]).map(function (k, i) { return rowHtml(i, k); }).join('') + '</tbody>';
-      rowsEl.appendChild(tb); man.hidden = false; if (msg) say(msg, 'er'); validateRows(false);
+      rowsEl.appendChild(tb); man.hidden = false; if (msg) say(msg, cls || 'er'); validateRows(false);
     }
     function validateRows(strict) {
       var ok = true;
@@ -511,12 +578,10 @@
           var fd = new FormData(); fd.append('_t', box.getAttribute('data-t')); fd.append('student_id', box.getAttribute('data-sid')); fd.append('json', '1'); fd.append('src', 'ocr');
           kids.forEach(function (k, i) { ['idn', 'ln', 'fn', 'dob', 'g'].forEach(function (f) { fd.append('sp[' + i + '][' + f + ']', k[f]); }); });
           fetch('leads_save.php', { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
-            say(j.msg, j.bad && j.bad.length ? 'er' : 'ok'); setTimeout(function () { location.href = 'student.php?id=' + box.getAttribute('data-sid') + '&open=leads,docs'; }, 1500);
+            say(j.msg + ' אפשר לתקן כל פרט בטבלה.', j.bad && j.bad.length ? 'er' : 'ok'); setTimeout(function () { location.href = 'student.php?id=' + box.getAttribute('data-sid') + '&open=leads,docs'; }, 1500);
           }).catch(function () { showManual(kids, 'שגיאה בקריאת הנתונים, נא לשלוח צילום ברור יותר או להקליד ידנית.'); });
         } else {
-          hid.textContent = ''; if (srcIn) srcIn.value = 'ocr';
-          kids.forEach(function (k, i) { ['idn', 'ln', 'fn', 'dob', 'g'].forEach(function (f) { var h = document.createElement('input'); h.type = 'hidden'; h.name = 'sp[' + i + '][' + f + ']'; h.value = k[f]; hid.appendChild(h); }); });
-          say('נקראו ' + kids.length + ' אחים/אחיות: ' + names + '. יישמרו יחד עם התלמידה.', 'ok'); man.hidden = true;
+          showManual(kids, 'נקראו ' + kids.length + ' אחים/אחיות. אפשר לתקן כל פרט לפני השמירה; הם יישמרו יחד עם התלמידה.', 'ok', 'ocr');
         }
         return;
       }
@@ -537,6 +602,15 @@
         fetch(b.getAttribute('data-spach'), { credentials: 'same-origin' }).then(function (r) { if (!r.ok) throw new Error('http'); return r.blob(); }).then(function (bl) { run([bl.type ? bl : new Blob([bl], { type: b.getAttribute('data-mime') || '' })]); }).catch(function () { say('הורדת הקובץ נכשלה.', 'er'); });
       });
     });
+    if (mode === 'card') {
+      var ar = /[?&]autoread=([\d,]+)/.exec(location.search);
+      if (ar) {
+        try { history.replaceState(null, '', location.href.replace(/([?&])autoread=[\d,]+&?/, '$1').replace(/[?&]$/, '')); } catch (e) { }
+        var urls = ar[1].split(',').map(function (id) { return 'file.php?id=' + id + '&dl=1'; });
+        say('מוריד את הקבצים…');
+        Promise.all(urls.map(function (u) { return fetch(u, { credentials: 'same-origin' }).then(function (r) { if (!r.ok) throw new Error('http'); return r.blob(); }); })).then(function (bls) { run(bls); }).catch(function () { say('הורדת הקובץ נכשלה.', 'er'); });
+      }
+    }
     var opn = box.querySelector('[data-spopen]'); if (opn) opn.addEventListener('click', function () { showManual([], ''); opn.hidden = true; });
     var add = box.querySelector('[data-spadd]');
     if (add) add.addEventListener('click', function () {
