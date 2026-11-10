@@ -4,7 +4,6 @@ $u = require_role(['admin', 'finance']);
 $err = ''; $msg = ''; $prev = null; $token = '';
 function istaged(string $t): ?string { return preg_match('/^[a-f0-9]{32}$/', $t) ? PRIV . '/storage/inc_' . $t . '.bin' : null; }
 foreach (glob(PRIV . '/storage/inc_*.bin') ?: [] as $f) if (filemtime($f) < time() - 3600) @unlink($f);
-function inc_cat(string $c): string { $c = trim($c); return preg_match('/^ספרי לימוד/u', $c) ? 'ספרי לימוד' : $c; }
 function inc_fams(): array { $o = []; foreach (db()->query("SELECT f.id, f.name, (SELECT GROUP_CONCAT(s.name ORDER BY s.name SEPARATOR ', ') FROM students s WHERE s.family_id = f.id AND s.archived_at IS NULL) names FROM families f ORDER BY f.name")->fetchAll() as $r) $o[(int)$r['id']] = $r; return $o; }
 function inc_label(array $f): string { return $f['name'] . ' (#' . $f['id'] . ')'; }
 $fams = inc_fams();
@@ -29,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $r['dup'] = false; foreach ($r['sel'] as $fid) if (inc_have($r['key'], $fid)) $r['dup'] = true;
           $r['on'] = count($r['sel']) === 1 && !$r['don'] && !$r['dup'];
         } unset($r);
-        $prev = ['rows' => $rows]; $token = bin2hex(random_bytes(16)); $p = istaged($token);
+        $prev = ['rows' => $rows, 'name' => (string)$f['name']]; $token = bin2hex(random_bytes(16)); $p = istaged($token);
         file_put_contents($p, enc_bytes(json_encode($rows, JSON_UNESCAPED_UNICODE), 'income:' . $token), LOCK_EX); @chmod($p, 0600);
         audit('income_preview', 'payment', '', count($rows) . ' שורות');
       }
@@ -41,40 +40,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rows = $raw ? json_decode($raw, true) : null;
     if (!is_array($rows)) $err = 'פג תוקף התצוגה המקדימה. העלי את הקובץ שוב.';
     else {
-      $pdo = db(); $pdo->beginTransaction(); $n = 0; $dup = 0; $bad = 0; $sum = 0.0; $newCh = 0; $batch = 'inc' . bin2hex(random_bytes(6));
+      $pdo = db(); $pdo->beginTransaction(); $bad = 0; $parked = 0; $st = ['n' => 0, 'dup' => 0, 'sum' => 0.0, 'newCh' => 0]; $batch = 'inc' . bin2hex(random_bytes(6));
       $med = []; foreach ($rows as $r) if (!$r['par'] && !$r['don']) $med[inc_cat($r['cat'])][] = $r['amt'];
       $medv = fn(string $c) => (function ($v) { sort($v); return $v ? $v[intdiv(count($v), 2)] : 0; })($med[$c] ?? []);
-      $ins = $pdo->prepare('INSERT INTO payments (family_id, charge_id, for_month, amount, paid_on, method, ref, note, batch, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
       foreach ($rows as $i => $r) {
-        if (empty($_POST['on'][$i])) continue;
-        $kind = (string)($_POST['kind'][$i] ?? 't'); if (!in_array($kind, ['t', 'c'], true)) continue;
+        $kind = (string)($_POST['kind'][$i] ?? 't');
+        if (!in_array($kind, ['t', 'c'], true)) continue;   // "לא לקלוט": לא נקלט ולא נשמר
         $ids = []; foreach (explode('+', (string)($_POST['fam'][$i] ?? '')) as $part) if (preg_match('/\(#(\d+)\)\s*$/', trim($part), $m) && isset($fams[(int)$m[1]])) $ids[(int)$m[1]] = true;
-        $ids = array_keys($ids); if (!$ids) { $bad++; continue; }
-        $mo = (int)($_POST['month'][$i] ?? 0); if ($mo < 1 || $mo > 12) $mo = 0;
-        $each = round($r['amt'] / count($ids), 2); $rest = round($r['amt'] - $each * count($ids), 2);
-        foreach ($ids as $k => $fid) {
-          if (inc_have($r['key'], $fid)) { $dup++; continue; }
-          $amt = $each + ($k === 0 ? $rest : 0); $cid = null;
-          if ($kind === 'c') {
-            $label = inc_cat($r['cat']) !== '' ? inc_cat($r['cat']) : 'חיוב';
-            $q = $pdo->prepare('SELECT id, label FROM charges WHERE family_id = ? AND voided_at IS NULL'); $q->execute([$fid]);
-            foreach ($q->fetchAll() as $c) if (inc_nz($c['label']) === inc_nz($label)) { $cid = (int)$c['id']; break; }
-            if (!$cid) { $pdo->prepare('INSERT INTO charges (family_id, kind, label, amount, created_by, created_at) VALUES (?,?,?,?,?,?)')->execute([$fid, 'other', mb_substr($label, 0, 100), max($medv(inc_cat($r['cat'])), $amt) ?: $amt, $u['id'], now()]); $cid = (int)$pdo->lastInsertId(); $newCh++; }
-          }
-          $ins->execute([$fid, $cid, $kind === 't' && $mo ? $mo : null, $amt, $r['date'] !== '' ? $r['date'] : date('Y-m-d'), $r['method'], mb_substr($r['key'], 0, 60), mb_substr('דוח הכנסות: ' . $r['donor'] . ($r['note'] !== '' ? ' · ' . $r['note'] : ''), 0, 255), $batch, $u['id'], now()]);
-          $n++; $sum += $amt;
+        $ids = array_keys($ids);
+        if (empty($_POST['on'][$i]) || !$ids) {   // לא סומנה או בלי תיק: נשמרת לרשימת ההמתנה לשיוך (אלא אם כבר נקלטה בעבר)
+          if (empty($r['dup']) && income_park($pdo, $r, (string)($_POST['rname'] ?? ''), (int)$u['id'])) $parked++;
+          if (!empty($_POST['on'][$i]) && !$ids) $bad++;
+          continue;
         }
+        $mo = (int)($_POST['month'][$i] ?? 0); if ($mo < 1 || $mo > 12) $mo = 0;
+        income_place($pdo, $r, $ids, $kind, $mo, $batch, (int)$u['id'], (float)$medv(inc_cat($r['cat'])), $st);
       }
+      $n = $st['n']; $dup = $st['dup']; $sum = $st['sum']; $newCh = $st['newCh'];
       $pdo->commit(); @unlink($p);
-      audit('income_import', 'payment', '', "נקלטו $n תשלומים ($sum ₪), כפולים $dup, ללא תיק $bad, חיובים חדשים $newCh");
-      $msg = "נקלטו $n תשלומים בסך " . money($sum) . ($dup ? ". דולגו כבר-נקלטו: $dup" : '') . ($bad ? ". שורות בלי תיק תקין: $bad" : '') . ($newCh ? ". נוצרו $newCh חיובים חד־פעמיים חדשים" : '') . '.';
+      audit('income_import', 'payment', '', "נקלטו $n תשלומים ($sum ₪), כפולים $dup, ללא תיק $bad, חיובים חדשים $newCh, נשמרו להמשך שיוך $parked");
+      $msg = "נקלטו $n תשלומים בסך " . money($sum) . ($dup ? ". דולגו כבר-נקלטו: $dup" : '') . ($parked ? ". $parked שורות שלא שויכו נשמרו ב\"שורות שממתינות לשיוך\"" : '') . ($newCh ? ". נוצרו $newCh חיובים חד־פעמיים חדשים" : '') . '.';
     }
   }
 }
 page_head('העלאת דוח הכנסות');
 ?>
 <h1>העלאת דוח הכנסות מתוכנת הגבייה</h1>
-<p class="subnav"><a class="btn sec" href="collection.php">‹ לגבייה</a></p>
+<?php $pc = (int)db()->query('SELECT COUNT(*) FROM income_pending')->fetchColumn(); ?>
+<p class="subnav"><a class="btn sec" href="collection.php">‹ לגבייה</a> <a class="btn sec" href="income_pending.php">שורות שממתינות לשיוך<?= $pc ? ' (' . $pc . ')' : '' ?></a></p>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . ' <a href="collection.php">לגבייה</a></p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <?php if (!$prev): ?>
 <div class="card">
@@ -92,8 +85,9 @@ page_head('העלאת דוח הכנסות');
   <div class="tile p"><span class="mu">לא מזוהות</span><b class="er"><?= count($unm) ?></b></div>
 </div>
 <datalist id="fl"><?php foreach ($fams as $f) echo '<option value="' . e(inc_label($f)) . '">'; ?></datalist>
-<form method="post"><?= csrf_field() ?><input type="hidden" name="token" value="<?= e($token) ?>">
+<form method="post"><?= csrf_field() ?> <input type="hidden" name="token" value="<?= e($token) ?>"><input type="hidden" name="rname" value="<?= e($prev['name'] ?? '') ?>">
   <div class="bar"><button name="act" value="confirm" data-confirm="לקלוט את השורות המסומנות?">קליטת המסומנות</button><button name="act" value="cancel" class="sec">ביטול</button></div>
+  <p class="mu">שורות שלא תסומנה או שאין להן תיק נשמרות אוטומטית ב<a href="income_pending.php">"שורות שממתינות לשיוך"</a>, ואפשר לקלוט אותן אחר כך בלי להעלות את הדוח שוב. כדי לא לשמור שורה, בחרי בה "לא לקלוט".</p>
   <p class="mu">בעמודת התיק אפשר לחפש לפי שם משפחה ולבחור מהרשימה. לחלוקה בין כמה תיקים מפרידים ב-+. חודש "אוטומטי" משלים את החודשים הפתוחים לפי הסדר.</p>
   <div class="sc"><table><tr><th>קליטה</th><th>תאריך</th><th>משלם</th><th>הערה</th><th>קטגוריה</th><th>סכום</th><th>אמצעי</th><th>סוג</th><th>חודש</th><th>תיק / תיקים</th></tr>
   <?php foreach ($prev['rows'] as $i => $r): ?>

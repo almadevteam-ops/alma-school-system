@@ -128,3 +128,33 @@ function income_match(array $r, array $idx): array {
   }
   return $L;
 }
+
+function inc_cat(string $c): string { $c = trim($c); return preg_match('/^ספרי לימוד/u', $c) ? 'ספרי לימוד' : $c; }
+/**
+ * קולטת שורת דוח הכנסות לתיק אחד או יותר (חלוקה שווה). kind: t = שכר לימוד, c = חיוב חד־פעמי.
+ * $st מצטבר: n, dup, sum, newCh. $medAmt = סכום מקובל לחיוב חד־פעמי חדש (חציון הקטגוריה בדוח).
+ */
+function income_place(PDO $pdo, array $r, array $ids, string $kind, int $mo, string $batch, int $uid, float $medAmt, array &$st): void {
+  $each = round($r['amt'] / count($ids), 2); $rest = round($r['amt'] - $each * count($ids), 2);
+  $ins = $pdo->prepare('INSERT INTO payments (family_id, charge_id, for_month, amount, paid_on, method, ref, note, batch, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+  $have = $pdo->prepare("SELECT 1 FROM payments WHERE ref = ? AND family_id = ? AND batch LIKE 'inc%' AND voided_at IS NULL LIMIT 1");
+  foreach ($ids as $k => $fid) {
+    $have->execute([$r['key'], $fid]); if ($have->fetchColumn()) { $st['dup']++; continue; }
+    $amt = $each + ($k === 0 ? $rest : 0); $cid = null;
+    if ($kind === 'c') {
+      $label = inc_cat($r['cat']) !== '' ? inc_cat($r['cat']) : 'חיוב';
+      $q = $pdo->prepare('SELECT id, label FROM charges WHERE family_id = ? AND voided_at IS NULL'); $q->execute([$fid]);
+      foreach ($q->fetchAll() as $c) if (inc_nz($c['label']) === inc_nz($label)) { $cid = (int)$c['id']; break; }
+      if (!$cid) { $pdo->prepare('INSERT INTO charges (family_id, kind, label, amount, created_by, created_at) VALUES (?,?,?,?,?,?)')->execute([$fid, 'other', mb_substr($label, 0, 100), max($medAmt, $amt) ?: $amt, $uid, now()]); $cid = (int)$pdo->lastInsertId(); $st['newCh']++; }
+    }
+    $ins->execute([$fid, $cid, $kind === 't' && $mo ? $mo : null, $amt, $r['date'] !== '' ? $r['date'] : date('Y-m-d'), $r['method'], mb_substr($r['key'], 0, 60), mb_substr('דוח הכנסות: ' . $r['donor'] . ($r['note'] !== '' ? ' · ' . $r['note'] : ''), 0, 255), $batch, $uid, now()]);
+    $st['n']++; $st['sum'] += $amt;
+  }
+}
+/** שומרת שורה שלא שויכה, כדי שלא יהיה צורך לקלוט את הדוח שוב. מפתח הדוח ייחודי, כך שהעלאה חוזרת לא מכפילה. */
+function income_park(PDO $pdo, array $r, string $reportName, int $uid): bool {
+  $h = $pdo->prepare("SELECT 1 FROM payments WHERE ref = ? AND batch LIKE 'inc%' AND voided_at IS NULL LIMIT 1"); $h->execute([mb_substr($r['key'], 0, 60)]); if ($h->fetchColumn()) return false;   // כבר נקלטה (לכל תיק)
+  $q = $pdo->prepare('INSERT IGNORE INTO income_pending (rkey, paid_on, donor, amount, cat, note, data, report_name, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)');
+  $q->execute([mb_substr($r['key'], 0, 60), $r['date'] !== '' ? $r['date'] : null, $r['donor'], $r['amt'], $r['cat'], $r['note'], json_encode($r, JSON_UNESCAPED_UNICODE), mb_substr($reportName, 0, 120), $uid, now()]);
+  return $q->rowCount() > 0;
+}

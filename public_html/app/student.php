@@ -299,12 +299,21 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
 <?php if ($id && can_see_ids()):
   $ll = db()->prepare('SELECT l.* FROM sibling_leads l JOIN sibling_lead_links k ON k.lead_id = l.id WHERE k.student_id = ? ORDER BY l.dob, l.id'); $ll->execute([$id]); $ll = $ll->fetchAll();
   $exIds = implode(',', array_filter(array_map(fn($k) => preg_replace('/\D/', '', (string)($row[$k] ?? '')), ['idn', 'f_id', 'm_id'])));
-  sec_open('leads', 'אחים לרישום עתידי (מהספח)', count($ll) . ' במאגר', '◈'); ?>
+  $sibs = db()->prepare('SELECT id, name, idn, dob FROM student_sibs WHERE student_id = ? ORDER BY dob, id'); $sibs->execute([$id]); $sibs = $sibs->fetchAll();   // רשומות ישנות שהוזנו ידנית בעבר
+  $sis = sisters_of($row);
+  $inSchool = function (string $idn): int { if ($idn === '') return 0; $q = db()->prepare('SELECT id FROM students WHERE idn = ? AND archived_at IS NULL LIMIT 1'); $q->execute([$idn]); return (int)$q->fetchColumn(); };
+  sec_open('leads', 'אחים ואחיות', (count($ll) + count($sibs) + count($sis)) . ' רשומות', '♥'); ?>
   <div class="spbox" data-mode="card" data-sid="<?= (int)$id ?>" data-t="<?= e(csrf_token()) ?>" data-exclude="<?= e($exIds) ?>">
-  <?php if ($ll): ?><div class="sc"><table>
-    <tr><th>שם</th><th>ת״ז</th><th>תאריך לידה</th><th>מין</th><th>כניסה לז׳</th><th></th></tr>
-    <?php foreach ($ll as $l): $ey = lead_entry_year((string)$l['dob']); ?>
-    <tr><td><?= e(trim($l['first_name'] . ' ' . $l['last_name']) ?: 'שם לא נקרא') ?></td><td dir="ltr"><?= e($l['idn']) ?></td><td><?= $l['dob'] ? e(date('d/m/Y', strtotime($l['dob']))) : '<span class="mu">—</span>' ?></td><td><?= e(LEAD_GENDER[$l['gender']] ?? '—') ?></td><td><?= $ey ? e(heb_school_year($ey)) : '—' ?></td>
+  <?php if ($sis): ?><p><b>אחיות במערכת</b> (אותו תיק גבייה או טלפון הורים זהה):
+    <?php foreach ($sis as $x) echo '<a class="btn sec" href="student.php?id=' . (int)$x['id'] . '">' . e($x['name']) . ' · ' . e($x['grade']) . '</a> '; ?></p><?php endif; ?>
+  <?php if ($ll || $sibs): ?><div class="sc"><table>
+    <tr><th>שם</th><th>ת״ז</th><th>תאריך לידה</th><th>מין</th><th>היום בכיתה</th><th></th></tr>
+    <?php foreach ($sibs as $b): $bd = dob_iso((string)$b['dob']); $ins = $inSchool((string)$b['idn']); ?>
+    <tr><td><?= e($b['name']) ?><?= $ins ? ' · <a href="student.php?id=' . $ins . '">לומדת אצלנו</a>' : '' ?></td><td dir="ltr"><?= e($b['idn']) ?></td><td><?= $bd ? e(date('d/m/Y', strtotime($bd))) : e($b['dob']) ?></td><td>—</td><td><?= e(lead_grade_now((string)$bd) ?: '—') ?></td>
+      <td><?php if (can_edit()): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="sib_del"><input type="hidden" name="sib" value="<?= (int)$b['id'] ?>"><button class="btn sec" data-confirm="להסיר?">הסרה</button></form><?php endif; ?></td></tr>
+    <?php endforeach; ?>
+    <?php foreach ($ll as $l): $ins = $inSchool((string)$l['idn']); ?>
+    <tr><td><?= e(trim($l['first_name'] . ' ' . $l['last_name']) ?: 'שם לא נקרא') ?><?= $ins ? ' · <a href="student.php?id=' . $ins . '">לומדת אצלנו</a>' : '' ?></td><td dir="ltr"><?= e($l['idn']) ?></td><td><?= $l['dob'] ? e(date('d/m/Y', strtotime($l['dob']))) : '<span class="mu">—</span>' ?></td><td><?= e(LEAD_GENDER[$l['gender']] ?? '—') ?></td><td><?= e(lead_grade_now((string)$l['dob']) ?: '—') ?></td>
     <td><?php if (can_edit()): ?><details class="mt"><summary class="btn sec">עריכה</summary>
       <form method="post" action="leads_save.php" class="fg"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="edit_lead"><input type="hidden" name="lead" value="<?= (int)$l['id'] ?>">
         <label>שם פרטי<input name="fn" maxlength="60" value="<?= e($l['first_name']) ?>"></label><label>שם משפחה<input name="ln" maxlength="60" value="<?= e($l['last_name']) ?>"></label>
@@ -325,24 +334,6 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   </form>
   <?php endif; ?>
   </div>
-<?php sec_close(); ?>
-<?php endif; ?>
-<?php if ($id && can_see_ids()): ?>
-<?php
-$sibs = db()->prepare('SELECT id, name, idn, dob FROM student_sibs WHERE student_id = ? ORDER BY dob, id'); $sibs->execute([$id]); $sibs = $sibs->fetchAll();
-$sis = sisters_of($row);
-sec_open('sibs', 'אחים ואחיות', (count($sibs) + count($sis)) . ' רשומות', '♥'); ?>
-  <?php if ($sis): ?><p><b>אחיות במערכת</b> (אותו תיק גבייה או טלפון הורים זהה):
-    <?php foreach ($sis as $x) echo '<a class="btn sec" href="student.php?id=' . (int)$x['id'] . '">' . e($x['name']) . ' · ' . e($x['grade']) . '</a> '; ?></p><?php endif; ?>
-  <?php if ($sibs): ?><div class="sc"><table>
-    <tr><th>שם</th><th>ת.ז</th><th>תאריך לידה</th><th>שכבה</th><th></th></tr>
-    <?php foreach ($sibs as $b): $in = $b['idn'] !== '' ? db()->prepare('SELECT id FROM students WHERE idn = ? AND archived_at IS NULL LIMIT 1') : null; if ($in) { $in->execute([$b['idn']]); $in = $in->fetchColumn(); } ?>
-    <tr><td><?= e($b['name']) ?></td><td><bdi dir="ltr"><?= e($b['idn']) ?></bdi></td><td><?= e($b['dob'] !== '' ? (dob_iso($b['dob']) ? date_out(dob_iso($b['dob'])) : $b['dob']) : '') ?></td><td><?= e(grade_from_dob((string)$b['dob'])) ?><?= $in ? ' · <a href="student.php?id=' . (int)$in . '">לומדת אצלנו</a>' : '' ?></td>
-      <td><?php if (can_edit()): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="sib_del"><input type="hidden" name="sib" value="<?= (int)$b['id'] ?>"><button class="sec" data-confirm="להסיר?">הסרה</button></form><?php endif; ?></td></tr>
-    <?php endforeach; ?></table></div>
-  <?php else: ?><p class="mu">לא הוזנו אחים ואחיות מהספח.</p><?php endif; ?>
-  <?php if (can_edit()): ?><form method="post" class="bar mt"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="sib_add">
-    <label>שם<input name="sname" required maxlength="100"></label><label>ת.ז<input name="sidn" maxlength="9" inputmode="numeric" data-digits="1" dir="ltr"></label><label>תאריך לידה<input name="sdob" type="date" min="1990-01-01" max="<?= date('Y-m-d') ?>" dir="ltr"></label><button>הוספה</button></form><?php endif; ?>
 <?php sec_close(); ?>
 <?php endif; ?>
 <?php if ($id && $isAdmin): ?>

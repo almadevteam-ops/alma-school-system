@@ -349,10 +349,11 @@
     });
     var anyMarker = ws.filter(function (w) { return /מעמד|ישראלית|אזרחות/.test(w.t); });
     function hasStatus(c) { return anyMarker.some(function (m) { var dy = m.cy - c.cy; return dy >= -H * 0.012 && dy <= H * 0.085 && Math.abs(m.cx - c.cx) < W * 0.45; }); }
-    var children = [], bad = [], seen = {};
+    var children = [], bad = [], seen = {}, skipped = 0;
     cands.forEach(function (c) {
       if (c.valid) {
-        if (exclude.indexOf(c.s) >= 0 || seen[c.s] || !hasStatus(c)) return;
+        if (exclude.indexOf(c.s) >= 0) { if (!seen[c.s] && hasStatus(c)) { seen[c.s] = 1; skipped++; } return; }   // התלמידה עצמה/הורה: נספרת כבלוק אבל לא נשמרת
+        if (seen[c.s] || !hasStatus(c)) return;
         seen[c.s] = 1;
         var inX = function (w) { return w.cx >= c.x0 - W * 0.05 && w.cx <= c.x0 + W * 0.42; };
         var nameWs = ws.filter(function (w) { return inX(w) && w.cy >= c.cy - H * 0.075 && w.cy <= c.cy + H * 0.012; }).map(function (w) { return { h: spHebWord(w.t), w: w }; }).filter(function (o) { return o.h && spIsNameWord(o.h); });
@@ -368,15 +369,15 @@
     });
     var fam = {}; ws.forEach(function (w) { var h = spHebWord(w.t); if (h && spIsNameWord(h) && h.length >= 3) fam[h] = (fam[h] || 0) + 1; });
     children.sort(function (a, b) { return a.y - b.y || b.x - a.x; });
-    return { fam: fam, children: children, bad: bad, markers: markers.length, anyValid: cands.filter(function (c) { return c.valid && exclude.indexOf(c.s) < 0; }).map(function (c) { return c.s; }) };
+    return { fam: fam, children: children, bad: bad, skipped: skipped, markers: markers.length, anyValid: cands.filter(function (c) { return c.valid && exclude.indexOf(c.s) < 0; }).map(function (c) { return c.s; }) };
   }
   // מאחדת תוצאות של כמה ניסיונות קריאה (גרסאות עיבוד/עמודים) בהצבעה לכל שדה. ok = אפשר לשמור בלי התערבות.
   function spMerge(list) {
-    var by = {}, order = [], M = 0, famAll = {};
+    var by = {}, order = [], M = 0, famAll = {}, SK = 0;
     function vote(o, k, v) { if (!v) return; o.v[k] = o.v[k] || {}; o.v[k][v] = (o.v[k][v] || 0) + 1; }
     function top(m) { var best = '', n = 0; for (var k in (m || {})) if (m[k] > n) { n = m[k]; best = k; } return best; }
     list.forEach(function (r) {
-      M = Math.max(M, r.markers);
+      M = Math.max(M, r.markers); SK = Math.max(SK, r.skipped || 0);
       for (var w in r.fam) famAll[w] = (famAll[w] || 0) + r.fam[w];
     });
     var famTop = '', fn_ = 0; for (var w in famAll) if (famAll[w] > fn_) { fn_ = famAll[w]; famTop = w; }
@@ -394,12 +395,12 @@
     var kids = order.map(function (k) { var o = by[k]; return { idn: k, ln: famTop || top(o.v.ln), fn: top(o.v.fn), g: top(o.v.g), dob: top(o.v.dob), pos: o.pos, dv: o.v.dob || {}, gv: o.v.g || {} }; });
     var bad = [];
     list.forEach(function (r) { r.bad.forEach(function (b) { if (!order.some(function (s) { return spHamming(s, b.s) <= 2 || spLev(s, b.s) <= 3; }) && bad.indexOf(b.s) < 0) bad.push(b.s); }); });
-    return { children: kids, bad: bad, markers: M, ok: kids.length > 0 && M > 0 && bad.length === 0 && kids.length >= M };
+    return { children: kids, bad: bad, markers: M, skipped: SK, ok: kids.length > 0 && M > 0 && bad.length === 0 && kids.length + SK >= M };
   }
   // מאחדת תוצאות של עמודים שונים לאותה גרסת עיבוד
   function spCombine(list) {
-    var o = { fam: {}, children: [], bad: [], markers: 0, anyValid: [] };
-    list.forEach(function (r) { o.children = o.children.concat(r.children); o.bad = o.bad.concat(r.bad); o.markers += r.markers; o.anyValid = o.anyValid.concat(r.anyValid); for (var w in r.fam) o.fam[w] = (o.fam[w] || 0) + r.fam[w]; });
+    var o = { fam: {}, children: [], bad: [], skipped: 0, markers: 0, anyValid: [] };
+    list.forEach(function (r) { o.children = o.children.concat(r.children); o.bad = o.bad.concat(r.bad); o.markers += r.markers; o.skipped += r.skipped || 0; o.anyValid = o.anyValid.concat(r.anyValid); for (var w in r.fam) o.fam[w] = (o.fam[w] || 0) + r.fam[w]; });
     return o;
   }
   /*SPACH:END*/
@@ -585,7 +586,9 @@
         }
         return;
       }
-      showManual(kids, 'שגיאה בקריאת הנתונים, נא לשלוח צילום ברור יותר או להקליד ידנית.');
+      var need = (res.markers || 0) - (res.skipped || 0);
+      if (kids.length && !(res.bad && res.bad.length) && need > kids.length) showManual(kids, 'נקראו ' + kids.length + ' מתוך ' + need + ' אחים/אחיות שנראים בספח. אפשר להוסיף את החסרים ולשמור.', 'er');
+      else showManual(kids, 'שגיאה בקריאת הנתונים, נא לשלוח צילום ברור יותר או להקליד ידנית.');
     }
     function run(blobs) {
       if (busy) return; busy = true; man.hidden = true; hid.textContent = '';
