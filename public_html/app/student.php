@@ -14,12 +14,10 @@ $F = [
 const ID_FIELDS = ['idn', 'f_id', 'm_id'];
 const PHONE_FIELDS = ['phone', 'f_phone', 'm_phone', 'home_phone'];
 /** שדות שרק מנהלת מערכת יכולה לערוך בכרטיס של תלמידה קיימת. */
-const REQUIRED = ['name', 'grade'];
-/** שדות חובה נוספים ביצירת תלמידה חדשה (כמו בטופס ההרשמה). */
-const REQUIRED_NEW = ['idn'];
+const REQUIRED = ['name', 'grade', 'idn', 'dob', 'city', 'addr'];   // שם וכיתה תמיד; השאר חובה ביצירה, ובעריכה רק אם כבר מולאו (נתונים ישנים לא חוסמים שמירה)
 const ADMIN_ONLY = ['name', 'idn', 'f_name', 'm_name', 'f_id', 'm_id'];
 $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
-$err = ''; $msg = '';
+$err = ''; $msg = ''; $badf = [];
 $row = null;
 if ($id) {
   $st = db()->prepare('SELECT * FROM students WHERE id = ?'); $st->execute([$id]); $row = $st->fetch();
@@ -84,18 +82,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($row && !$isAdmin && (int)$row['disc_on'] === $d['disc_on'] && (float)$row['disc_amt'] === (float)$d['disc_amt']) $d['disc_status'] = (string)$row['disc_status'];   // לא שונה: האישור נשמר
   if (!$d['disc_on']) $d['disc_status'] = 'approved';
   $chg = fn(string $k) => !$row || (string)$row[$k] !== (string)$d[$k];   // בדיקות תקינות רק על מה ששונה (נתונים ישנים לא חוסמים שמירה)
-  if ($d['name'] === '') $err = 'נא למלא שם.';
-  elseif (!in_array($d['grade'], GRADES, true)) $err = 'נא לבחור כיתה.';
-  elseif (!$id && can_see_ids() && ($d['idn'] === '' || !preg_match('/^\d{9}$/', $d['idn']) || !valid_il_id($d['idn']))) $err = 'תלמידה חדשה: יש להקליד מספר זהות תקין של התלמידה.';
-  elseif (!$id && $d['f_phone'] === '' && $d['m_phone'] === '') $err = 'תלמידה חדשה: נא למלא לפחות טלפון אחד של אחד ההורים.';
-  elseif (!$id && $d['idn'] !== '' && ($dup = db()->prepare('SELECT name FROM students WHERE idn = ? LIMIT 1')) && $dup->execute([$d['idn']]) && ($dn = $dup->fetchColumn()) !== false) $err = 'כבר קיימת תלמידה עם מספר הזהות הזה (' . $dn . ').';
+  foreach (REQUIRED as $k) {
+    if ($k === 'idn' && !can_see_ids()) continue;
+    if ($k === 'addr' && geo_is_exception($d['city'])) continue;   // "דירה בנשר" וכד': אין רחוב
+    $must = !$id || in_array($k, ['name', 'grade'], true) || (string)($row[$k] ?? '') !== '';
+    $filled = $k === 'grade' ? in_array($d['grade'], GRADES, true) : trim((string)$d[$k]) !== '';
+    if ($must && !$filled) $badf[] = $k;
+  }
+  $dup = false;
+  if (!$id && $d['idn'] !== '') { $q = db()->prepare('SELECT name FROM students WHERE idn = ? LIMIT 1'); $q->execute([$d['idn']]); $dup = $q->fetchColumn(); }
+  if ($badf) $err = 'יש למלא את השדות המסומנים באדום.';
+  elseif (!$id && can_see_ids() && (!preg_match('/^\d{9}$/', $d['idn']) || !valid_il_id($d['idn']))) { $badf[] = 'idn'; $err = 'תעודת זהות: יש להקליד מספר זהות תקין.'; }
+  elseif ($dup !== false) { $badf[] = 'idn'; $err = 'כבר קיימת תלמידה עם מספר הזהות הזה (' . $dup . ').'; }
   elseif ($d['disc_on'] && $d['disc_amt'] <= 0) $err = 'הנחה: יש להזין סכום גדול מאפס.';
-  elseif ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $err = 'כתובת האימייל לא תקינה.';
-  elseif ($dobIn !== '' && dob_iso($dobIn) === '') $err = 'תאריך הלידה לא תקין.';
-  elseif ($d['dob'] !== '' && dob_iso($d['dob']) !== '' && $d['dob'] > date('Y-m-d')) $err = 'תאריך הלידה לא יכול להיות בעתיד.';
+  elseif ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) { $badf[] = 'email'; $err = 'כתובת האימייל לא תקינה.'; }
+  elseif ($dobIn !== '' && dob_iso($dobIn) === '') { $badf[] = 'dob'; $err = 'תאריך הלידה לא תקין.'; }
+  elseif ($d['dob'] !== '' && dob_iso($d['dob']) !== '' && $d['dob'] > date('Y-m-d')) { $badf[] = 'dob'; $err = 'תאריך הלידה לא יכול להיות בעתיד.'; }
   else {
-    foreach (ID_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && (!preg_match('/^\d{9}$/', $d[$k]) || preg_match('/^0+$/', $d[$k]) || !valid_il_id($d[$k]))) { $err = $F[$k][0] . ': יש להקליד מספר זהות תקין.'; break; }
-    if (!$err) foreach (PHONE_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && !phone_ok($d[$k])) { $err = $F[$k][0] . ': מספר טלפון לא תקין (לדוגמה 050-1234567 או 04-1234567).'; break; }
+    foreach (ID_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && (!preg_match('/^\d{9}$/', $d[$k]) || preg_match('/^0+$/', $d[$k]) || !valid_il_id($d[$k]))) { $badf[] = $k; $err = $F[$k][0] . ': יש להקליד מספר זהות תקין.'; break; }
+    if (!$err) foreach (PHONE_FIELDS as $k) if ($d[$k] !== '' && $chg($k) && !phone_ok($d[$k])) { $badf[] = $k; $err = $F[$k][0] . ': מספר טלפון לא תקין (לדוגמה 050-1234567 או 04-1234567).'; break; }
     if (!$err) $err = geo_check($d['city'], $d['addr'], $d['house_no'], $chg('city'), $chg('addr') || $chg('city'), $chg('house_no') || $chg('addr')) ?? '';
     if (!$err && $chg('hmo') && !in_array($d['hmo'], [...HMO_LIST, HMO_UNKNOWN], true)) $err = 'נא לבחור קופת חולים מהרשימה.';
     if (!$err && $row && $d['status'] !== $oldStatus && $statusNote === '') $err = 'שינוי סטטוס מחייב הערה: נא לכתוב את הסיבה.';
@@ -123,7 +128,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($d['is_apt']) apt_apply($nid);
       audit('create', 'student', (string)$nid, $d['name']);
       try { notify_new_student($d, $nid); } catch (Throwable $t) { audit('new_student_mail_failed', 'student', (string)$nid, mb_substr($t->getMessage(), 0, 200)); }
-      redirect('student.php?id=' . $nid . '&saved=1');
+      $notes = []; $fileErrs = [];
+      if (can_see_ids()) foreach (['parent_id', 'spach'] as $in) {   // מסמכים שהועלו יחד עם התלמידה
+        $fs = $_FILES[$in] ?? null;
+        if ($fs && is_array($fs['name'])) foreach ($fs['name'] as $i => $n) {
+          if ($fs['error'][$i] === UPLOAD_ERR_NO_FILE) continue;
+          [$good, $info] = store_student_file(['name' => $n, 'tmp_name' => $fs['tmp_name'][$i], 'error' => $fs['error'][$i]], $nid, $in, (int)$u['id']);
+          if ($good) audit('file_upload', 'student', (string)$nid, FILE_KINDS[$in] . ': ' . clean_name($n)); else $fileErrs[] = clean_name($n) . ': ' . $info;
+        }
+      }
+      $lo = null;
+      if (can_edit() && !empty($_POST['sp']) && is_array($_POST['sp'])) { $lo = leads_store($nid, $_POST['sp'], ($_POST['sp_src'] ?? '') === 'manual' ? 'manual' : 'ocr', (string)($u['name'] ?: $u['username'])); $notes[] = leads_msg($lo); }
+      $notes = array_merge($fileErrs, $notes); $bad = $fileErrs || ($lo && $lo['bad']);
+      redirect('student.php?id=' . $nid . '&saved=1' . ($notes ? '&' . ($bad ? 'e=' : 'm=') . rawurlencode('התלמידה נשמרה. ' . implode(' | ', $notes)) : ''));
     }
   }
   $row = array_merge($row ?: [], $d);   // keep typed values on error
@@ -145,18 +162,18 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <?php if ($row && $id && ($row['marital'] ?? '') === 'divorced' && !has_divorce_doc($id)): ?><p class="er alertbar">⚠ הורים גרושים: חסר מסמך חתום על ידי שני ההורים. <a href="?id=<?= (int)$id ?>&open=docs#s-docs">להעלאת המסמך</a></p><?php endif; ?>
 <?php sec_open('details', 'פרטי תלמידה', ($row['grade'] ?? '') !== '' ? 'כיתה ' . class_label((string)$row['grade'], (string)($row['cls'] ?? '')) : '', '☺', ['details']); ?>
-<form method="post" class="dirty" autocomplete="off">
+<form method="post" class="dirty" autocomplete="off" novalidate enctype="multipart/form-data">
   <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>">
   <div class="fg">
   <?php foreach ($F as $k => [$lbl, $max, $sens]):
     if ($sens && !can_see_ids()) continue;
     $lock = $ro || ($id && !$isAdmin && in_array($k, ADMIN_ONLY, true));
     $dis = $lock ? ' disabled' : '';
-    $isReq = in_array($k, REQUIRED, true) || (!$id && in_array($k, REQUIRED_NEW, true)); $req = $isReq && !$lock; $star = $isReq ? ' <span class="req" title="שדה חובה">*</span>' : '';
-    if (!$id && in_array($k, ['f_phone', 'm_phone'], true)) $star = ' <span class="req" title="נדרש טלפון של לפחות אחד ההורים">*</span>';
+    $isReq = in_array($k, ['name', 'grade'], true) || (in_array($k, REQUIRED, true) && (!$id || (string)($row[$k] ?? '') !== '')); $req = $isReq && !$lock; $star = $isReq ? ' <span class="req">*</span>' : '';
+    $bc = in_array($k, $badf, true) ? ' class="bad"' : '';
     $reqa = $req ? ' required' : '';
     if ($k === 'grade') {
-      echo '<label><span>' . e($lbl) . $star . '</span><select name="grade"' . ($ro ? ' disabled' : '') . $reqa . '><option value=""></option>';
+      echo '<label><span>' . e($lbl) . $star . '</span><select name="grade"' . $bc . ($ro ? ' disabled' : '') . $reqa . '><option value=""></option>';
       foreach (GRADES as $x) echo '<option' . ($val('grade') === $x ? ' selected' : '') . '>' . e($x) . '</option>';
       echo '</select></label>'; continue;
     }
@@ -184,7 +201,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     elseif ($k === 'city' && $geo) $attr = ' data-geo="city" list="geo-cities" placeholder="הקלידי ובחרי מהרשימה"';
     elseif ($k === 'addr' && $geo) $attr = ' data-geo="street" list="geo-streets" placeholder="בחרי רחוב מהרשימה"';
     elseif ($k === 'house_no') $attr = ($geo ? ' data-geo="house"' : '') . ' placeholder="למשל 12 או 12א" dir="ltr"';
-    echo '<label><span>' . e($lbl) . $star . '</span><input name="' . $k . '" maxlength="' . ($max > 9 && in_array($k, ID_FIELDS, true) ? 9 : $max) . '" value="' . e($v) . '"' . $attr . $dis . $reqa . '></label>';
+    echo '<label><span>' . e($lbl) . $star . '</span><input name="' . $k . '" maxlength="' . ($max > 9 && in_array($k, ID_FIELDS, true) ? 9 : $max) . '" value="' . e($v) . '"' . $attr . $bc . $dis . $reqa . '></label>';
   endforeach; ?>
   <label>מצב הורים<select name="marital"<?= $ro ? ' disabled' : '' ?>><option value="married">נשואים</option><option value="divorced"<?= $val('marital') === 'divorced' ? ' selected' : '' ?>>גרושים</option></select></label>
   <label class="chk"><input type="checkbox" name="is_apt" value="1"<?= $val('is_apt') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> גרה בדירה (שכר הלימוד משולם ע"י מורשת גד)</label>
@@ -210,6 +227,20 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <?php if ($isAdmin && $id): ?><label class="wide" id="stnote"<?= (($val('status_note') ?? '') === '') ? ' hidden' : '' ?>>סיבת שינוי הסטטוס (חובה)<input name="status_note" maxlength="500" value="<?= e((string)($row['status_note'] ?? '')) ?>" placeholder="למשל: עברה למוסד אחר"></label><?php endif; ?>
   </div>
   <?php if (geo_ready() && !$ro): ?><datalist id="geo-cities"></datalist><datalist id="geo-streets"></datalist><p class="mu">כתובת: קודם בוחרים עיר מהרשימה, אחר כך רחוב מהרשימה, ורק אז מקלידים מספר בית.</p><?php endif; ?>
+  <?php if (!$id && !$ro): ?>
+  <fieldset class="spbox" data-mode="new">
+    <legend>תעודת זהות הורה וספח (לא חובה)</legend>
+    <p class="mu">הספח נקרא אוטומטית: האחים והאחיות נכנסים למאגר הרישום העתידי. אפשר גם בלי, ולהוסיף מאוחר יותר מכרטיס התלמידה.</p>
+    <div class="fg">
+      <label>תעודת זהות של אחד ההורים<input type="file" name="parent_id[]" multiple accept="image/jpeg,image/png,image/webp,application/pdf"></label>
+      <label>ספח מלא (תמונה או PDF)<input type="file" name="spach[]" multiple data-spfile accept="image/jpeg,image/png,image/webp,application/pdf"></label>
+    </div>
+    <input type="hidden" name="sp_src" value="ocr">
+    <p class="spstat" aria-live="polite"></p>
+    <div class="spman" hidden><div class="sprows"></div><button type="button" class="btn sec" data-spadd>＋ הוספת אח/אחות</button></div>
+    <div class="sphid"></div>
+  </fieldset>
+  <?php endif; ?>
   <?php if (!$ro): ?><p class="mu"><span class="req">*</span> שדה חובה</p><?php endif; ?>
   <div class="acts">
   <?php if (!$ro): ?><button class="sv" disabled>שמירה</button><?php endif; ?>
@@ -241,6 +272,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
       <td>
         <a class="btn sec" href="file.php?id=<?= (int)$f['id'] ?>" target="_blank" rel="noopener">צפייה</a>
         <a class="btn sec" href="file.php?id=<?= (int)$f['id'] ?>&dl=1">הורדה</a>
+        <?php if (can_edit() && in_array($f['kind'], ['id', 'spach'], true) && in_array($f['mime'], ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], true)): ?><button type="button" class="btn sec" data-spach="file.php?id=<?= (int)$f['id'] ?>&amp;dl=1" data-mime="<?= e($f['mime']) ?>">קריאת ספח</button><?php endif; ?>
         <?php if ($u['role'] === 'admin'): ?>
         <form method="post" action="file_upload.php" class="inl"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="delete"><input type="hidden" name="fid" value="<?= (int)$f['id'] ?>"><button class="dg">מחיקה</button></form>
         <?php endif; ?>
@@ -260,6 +292,31 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     <p class="mu">הקבצים נשמרים מוצפנים. כל צפייה והורדה נרשמות ביומן הפעולות.</p>
   </form>
   <?php endif; ?>
+<?php sec_close(); ?>
+<?php endif; ?>
+<?php if ($id && can_see_ids()):
+  $ll = db()->prepare('SELECT l.* FROM sibling_leads l JOIN sibling_lead_links k ON k.lead_id = l.id WHERE k.student_id = ? ORDER BY l.dob, l.id'); $ll->execute([$id]); $ll = $ll->fetchAll();
+  $exIds = implode(',', array_filter(array_map(fn($k) => preg_replace('/\D/', '', (string)($row[$k] ?? '')), ['idn', 'f_id', 'm_id'])));
+  sec_open('leads', 'אחים לרישום עתידי (מהספח)', count($ll) . ' במאגר', '◈'); ?>
+  <div class="spbox" data-mode="card" data-sid="<?= (int)$id ?>" data-t="<?= e(csrf_token()) ?>" data-exclude="<?= e($exIds) ?>">
+  <?php if ($ll): ?><div class="sc"><table>
+    <tr><th>שם</th><th>ת״ז</th><th>תאריך לידה</th><th>מין</th><th>כניסה לז׳</th><th></th></tr>
+    <?php foreach ($ll as $l): $ey = lead_entry_year((string)$l['dob']); ?>
+    <tr><td><?= e(trim($l['first_name'] . ' ' . $l['last_name']) ?: 'שם לא נקרא') ?></td><td dir="ltr"><?= e($l['idn']) ?></td><td><?= $l['dob'] ? e(date('d/m/Y', strtotime($l['dob']))) : '<span class="mu">—</span>' ?></td><td><?= e(LEAD_GENDER[$l['gender']] ?? '—') ?></td><td><?= $ey ? e(heb_school_year($ey)) : '—' ?></td>
+    <td><?php if (can_edit()): ?><form method="post" action="leads_save.php" class="inl"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="unlink"><input type="hidden" name="lead" value="<?= (int)$l['id'] ?>"><button class="btn sec">הסרה</button></form><?php endif; ?></td></tr>
+    <?php endforeach; ?>
+  </table></div>
+  <?php else: ?><p class="mu">עדיין לא נוספו אחים ואחיות. הקריאה מתבצעת מהכפתור "קריאת ספח" ליד קובץ הספח בקטע "מסמכים", או בהקלדה ידנית.</p><?php endif; ?>
+  <p class="spstat" aria-live="polite"></p>
+  <?php if (can_edit()): ?>
+  <button type="button" class="btn sec" data-spopen>＋ הוספה ידנית</button>
+  <form method="post" action="leads_save.php" class="spman" data-spform hidden>
+    <?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="src" value="manual"><input type="hidden" name="sp_src" value="manual">
+    <div class="sprows"></div>
+    <div class="acts"><button type="button" class="btn sec" data-spadd>＋ שורה נוספת</button><button class="btn">שמירה למאגר</button></div>
+  </form>
+  <?php endif; ?>
+  </div>
 <?php sec_close(); ?>
 <?php endif; ?>
 <?php if ($id && can_see_ids()): ?>

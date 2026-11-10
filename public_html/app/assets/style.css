@@ -250,3 +250,14 @@ tr.pendrow td { vertical-align: top; }
 .pbar{width:100%;height:8px;display:block}.pbar .bg{fill:#eee9ec}.pbar .fg{fill:var(--gr)}
 .mailform.fg{display:block;max-width:760px}.mailform>label{display:flex;flex-direction:column;gap:4px;margin:0 0 12px}.mailform input:not([type=checkbox]),.mailform select,.mailform textarea{width:100%;box-sizing:border-box}
 .mailform .bar{margin:12px 0}.mailform .bar label{max-width:320px}
+/* מאגר אחים / קריאת ספח */
+.chip{display:inline-block;background:#efe6ee;color:var(--ac);border-radius:20px;padding:1px 9px;font-size:12px;font-weight:700}
+.ltab td{vertical-align:top}.ltab .lt{display:flex;gap:6px;flex-wrap:wrap}.ltab .lt input{min-width:130px}
+.spbox{border:1px dashed var(--ln);border-radius:14px;padding:12px 14px;margin:14px 0;background:#fbf9fb}
+.spbox legend{font-weight:700;padding:0 6px}
+.spbox label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--mu);margin-bottom:8px}
+.spstat{margin:8px 0;font-size:14px}.spstat.ok{color:#1d6b3a}.spstat.er{color:#a8322a;font-weight:700}
+.spman{margin-top:8px}.sprows{display:grid;gap:8px;margin-bottom:8px}
+.sprow{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;align-items:end}
+.sprow input,.sprow select{width:100%}.sprow .bad{border-color:#c0392b;background:#fdecea}
+.sphid{display:none}

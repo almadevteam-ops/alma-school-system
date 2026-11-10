@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 // קבצים מוצפנים של תלמידות: נשמרים ב-private/storage כקבצי ALM1 מוצפנים (AES-256-GCM), בשם אקראי.
-const FILE_KINDS = ['id' => 'תעודת זהות וספח', 'divorce' => 'טופס הורים גרושים', 'other' => 'אחר'];
+const FILE_KINDS = ['id' => 'תעודת זהות וספח', 'parent_id' => 'תעודת זהות הורה', 'spach' => 'ספח', 'divorce' => 'טופס הורים גרושים', 'other' => 'אחר'];
 const FILE_MAX = 10 * 1024 * 1024;
 const FILE_MIMES = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'application/pdf' => 'pdf'];
 const FILE_LIMIT_PER_STUDENT = 20;

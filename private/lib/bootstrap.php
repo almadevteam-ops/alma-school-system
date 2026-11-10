@@ -47,6 +47,7 @@ require_once __DIR__ . '/files.php';
 require_once __DIR__ . '/import.php';
 require_once __DIR__ . '/collection.php';
 require_once __DIR__ . '/mailing.php';
+require_once __DIR__ . '/leads.php';
 require_once __DIR__ . '/notes.php';
 require_once __DIR__ . '/mfa_email.php';
 require_once __DIR__ . '/backup.php';
@@ -62,7 +63,7 @@ header_remove('X-Powered-By');
 header('X-Frame-Options: DENY');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
-header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+header("Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
 header('Cache-Control: no-store');
 if (is_https()) header('Strict-Transport-Security: max-age=15552000');
@@ -197,12 +198,13 @@ function page_head(string $title, bool $nav = true): void {
     $icons = [
       'students.php' => '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .7 3.2 2.4 3.5 5.2"/>',
       'collection.php' => '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M16.5 15h1.5"/>',
+      'leads.php' => '<circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9.5" r="2.4"/><path d="M3 19c.6-3.4 3-5 6-5s5.4 1.6 6 5M15.5 14.2c2.6-.3 4.6 1 5.5 4"/>',
       'mailing.php' => '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/>',
       'security.php' => '<path d="M12 3l7.5 3v5.5c0 4.5-3 8-7.5 9.5-4.5-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
       'admin' => '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>',
     ];
     echo '<header class="top"><a class="brand" href="students.php"><img src="/app/assets/logo-mark.png" alt="" width="30" height="30"><b>עלמא</b></a><nav>';
-    $main = ['students.php' => 'תלמידות', 'collection.php' => 'גבייה']; if (in_array($u['role'], ['admin', 'secretary'], true)) $main['mailing.php'] = 'דיוור'; $main['security.php'] = 'אבטחה';
+    $main = ['students.php' => 'תלמידות', 'collection.php' => 'גבייה']; if (in_array($u['role'], ['admin', 'secretary'], true)) { $main['mailing.php'] = 'דיוור'; $main['leads.php'] = 'מאגר אחים'; } $main['security.php'] = 'אבטחה';
     foreach ($main as $f => $l)
       echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . ' title="' . e($l) . '">' . $ic($icons[$f]) . '<span>' . e($l) . '</span></a>';
     if ($u['role'] === 'admin') {
