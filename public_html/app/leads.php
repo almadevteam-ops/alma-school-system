@@ -53,10 +53,10 @@ if (!empty($_GET['csv'])) {
   header('Content-Type: text/csv; charset=utf-8'); header('Content-Disposition: attachment; filename="sibling-leads-' . date('Y-m-d') . '.csv"'); header('Cache-Control: no-store');
   $o = fopen('php://output', 'w'); fwrite($o, "\xEF\xBB\xBF");
   $cell = function ($v): string { $v = bidi_fix((string)$v); return ($v !== '' && strpos("=+-@\t\r", $v[0]) !== false) ? "'" . $v : $v; };
-  fputcsv($o, ['שם פרטי', 'שם משפחה', 'ת״ז', 'תאריך לידה', 'מין', 'כניסה לז׳', 'אחות של', 'טלפון הורים', 'סטטוס', 'הערה']);
+  fputcsv($o, ['שם פרטי', 'שם משפחה', 'ת״ז', 'תאריך לידה', 'מין', 'היום בכיתה', 'כניסה לז׳', 'אחות של', 'טלפון הורים', 'סטטוס', 'הערה']);
   foreach ($rows as $l) {
     $ey = lead_entry_year((string)$l['dob']); $ss = $sis[$l['id']] ?? [];
-    fputcsv($o, array_map($cell, [$l['first_name'], $l['last_name'], $l['idn'], $l['dob'] ? date('d/m/Y', strtotime($l['dob'])) : '', LEAD_GENDER[$l['gender']] ?? '', $ey ? heb_school_year($ey) : '', implode(' / ', array_column($ss, 'name')), implode(' / ', array_unique(array_filter([$ss[0]['f_phone'] ?? '', $ss[0]['m_phone'] ?? '']))), LEAD_STATUS[$l['status']] ?? '', $l['note']]));
+    fputcsv($o, array_map($cell, [$l['first_name'], $l['last_name'], $l['idn'], $l['dob'] ? date('d/m/Y', strtotime($l['dob'])) : '', LEAD_GENDER[$l['gender']] ?? '', lead_grade_now((string)$l['dob']), $ey ? heb_school_year($ey) : '', implode(' / ', array_column($ss, 'name')), implode(' / ', array_unique(array_filter([$ss[0]['f_phone'] ?? '', $ss[0]['m_phone'] ?? '']))), LEAD_STATUS[$l['status']] ?? '', $l['note']]));
   }
   fclose($o); exit;
 }
@@ -90,7 +90,7 @@ page_head('מאגר אחים');
 </form>
 <p class="mu"><?= count($rows) ?> רשומות</p>
 <div class="sc"><table class="ltab">
-  <tr><th>שם</th><th>ת״ז</th><th>תאריך לידה</th><th>מין</th><th>כניסה לז׳</th><th>אחות של</th><th>טלפון הורים</th><th>מעקב</th></tr>
+  <tr><th>שם</th><th>ת״ז</th><th>תאריך לידה</th><th>מין</th><th>היום בכיתה</th><th>אחות של</th><th>טלפון הורים</th><th>מעקב</th></tr>
   <?php foreach ($rows as $l):
     $ey = lead_entry_year((string)$l['dob']); $ss = $sis[$l['id']] ?? [];
     $age = $l['dob'] ? (int)floor((time() - strtotime($l['dob'])) / 31557600) : null;
@@ -100,7 +100,7 @@ page_head('מאגר אחים');
     <td dir="ltr"><?= e($l['idn']) ?></td>
     <td><?= $l['dob'] ? e(date('d/m/Y', strtotime($l['dob']))) . ' <span class="mu">(' . $age . ')</span>' : '<span class="mu">—</span>' ?></td>
     <td><?= e(LEAD_GENDER[$l['gender']] ?? '—') ?></td>
-    <td><?= $ey ? e(heb_school_year($ey)) : '—' ?></td>
+    <td><?= e(lead_grade_now((string)$l['dob']) ?: '—') ?><?= $ey ? '<br><span class="mu">ז׳ ב' . e(heb_school_year($ey)) . '</span>' : '' ?></td>
     <td><?php foreach ($ss as $i => $s) echo ($i ? ', ' : '') . '<a href="student.php?id=' . (int)$s['id'] . '">' . e($s['name']) . '</a>'; ?></td>
     <td dir="ltr"><?= e(implode(' / ', array_map('fmt_phone', $ph))) ?: '—' ?></td>
     <td>

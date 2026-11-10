@@ -76,3 +76,14 @@ function heb_school_year(int $startYear): string {
 }
 /** שנת הלימודים (שנה לועזית שבה היא מתחילה) שבה ילד שנולד ב-$dob נכנס לכיתה ז׳. */
 function lead_entry_year(string $dobIso): ?int { return preg_match('/^(\d{4})-/', $dobIso, $m) ? (int)$m[1] + 12 : null; }
+
+/** הכיתה המשוערת היום לפי שנת הלידה (ז = נולדה 12 שנים לפני תחילת שנת הלימודים). */
+function lead_grade_now(?string $dobIso): string {
+  if (!$dobIso || !preg_match('/^(\d{4})-/', $dobIso, $m)) return '';
+  $y = (int)date('Y') - ((int)date('n') < 9 ? 1 : 0);   // שנת הלימודים הנוכחית (תחילתה בספטמבר)
+  $g = $y - ((int)$m[1] + 12) + 7;
+  $names = [1 => 'א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י', 'יא', 'יב'];
+  if ($g < 1) return $g >= -3 ? 'גן / לפני כיתה א׳' : 'עדיין לא בגיל בית ספר';
+  if ($g > 12) return 'סיימה תיכון';
+  return 'כיתה ' . $names[$g];
+}
