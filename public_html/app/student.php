@@ -208,10 +208,13 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <label class="chk"><input type="checkbox" name="vaada" value="1" data-tg="vaada"<?= $val('vaada') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> עברה ועדה</label>
   <label class="wide" data-g="vaada"<?= $val('vaada') ? '' : ' hidden' ?>>פירוט הוועדה (תאריך / החלטה)<input name="vaada_note" maxlength="255" value="<?= e((string)$val('vaada_note')) ?>"<?= $ro ? ' disabled' : '' ?>></label>
   <label class="chk"><input type="checkbox" name="s07" value="1"<?= $val('s07') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> מוגדרת 07</label>
-  <label class="chk"><input type="checkbox" name="allergy" value="1" data-tg="allergy"<?= $val('allergy') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> יש רגישות</label>
-  <div class="wide chkrow" data-g="allergy"<?= $val('allergy') ? '' : ' hidden' ?>><span class="mu">במה:</span>
-    <?php $alc = explode(',', (string)$val('allergy_list')); foreach (ALLERGY_OPTS as $x): ?><label class="chk"><input type="checkbox" name="allergy_list[]" value="<?= e($x) ?>"<?= in_array($x, $alc, true) ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> <?= e($x) ?></label><?php endforeach; ?>
-    <input name="allergy_other" maxlength="120" placeholder="פירוט (אחר)" value="<?= e((string)$val('allergy_other')) ?>"<?= $ro ? ' disabled' : '' ?>></div>
+  <div class="wide algbox">
+    <label class="chk"><input type="checkbox" name="allergy" value="1" data-tg="allergy"<?= $val('allergy') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> יש רגישות למזון כלשהו</label>
+    <div class="algopts" data-g="allergy"<?= $val('allergy') ? '' : ' hidden' ?>><span class="mu">סוגי הרגישות:</span>
+      <div class="algl"><?php $alc = explode(',', (string)$val('allergy_list')); foreach (ALLERGY_OPTS as $x): ?><label class="chk"><input type="checkbox" name="allergy_list[]" value="<?= e($x) ?>"<?= in_array($x, $alc, true) ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> <?= e($x) ?></label><?php endforeach; ?></div>
+      <input name="allergy_other" maxlength="120" placeholder="פירוט (אחר)" value="<?= e((string)$val('allergy_other')) ?>"<?= $ro ? ' disabled' : '' ?>>
+    </div>
+  </div>
   <div class="wide dsc"><label class="chk"><input type="checkbox" name="disc_on" value="1" data-tg="disc"<?= $val('disc_on') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> יש הנחה <?php if ($val('disc_on') && ($val('disc_status') ?: 'approved') === 'pending') echo '<span class="pill pending">ממתינה לאישור</span>'; ?></label>
     <div class="fg" data-g="disc"<?= $val('disc_on') ? '' : ' hidden' ?>>
       <label>הנחה לחודש (₪)<input name="disc_amt" inputmode="decimal" value="<?= e($val('disc_amt') ? rtrim(rtrim((string)$val('disc_amt'), '0'), '.') : '') ?>"<?= $ro ? ' disabled' : '' ?>></label>
