@@ -51,6 +51,7 @@ require_once __DIR__ . '/leads.php';
 require_once __DIR__ . '/notes.php';
 require_once __DIR__ . '/mfa_email.php';
 require_once __DIR__ . '/backup.php';
+require_once __DIR__ . '/backup_delta.php';
 
 // ---- HTTPS ----
 if (PHP_SAPI !== 'cli' && cfg('force_https', true) && !is_https()) {
@@ -201,6 +202,7 @@ function page_head(string $title, bool $nav = true): void {
       'leads.php' => '<circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9.5" r="2.4"/><path d="M3 19c.6-3.4 3-5 6-5s5.4 1.6 6 5M15.5 14.2c2.6-.3 4.6 1 5.5 4"/>',
       'mailing.php' => '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/>',
       'security.php' => '<path d="M12 3l7.5 3v5.5c0 4.5-3 8-7.5 9.5-4.5-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
+      'maint' => '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3.5 17.5a1.8 1.8 0 0 0 2.5 2.5l5.8-5.8a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.2-.6-.6-2.2z"/>',
       'admin' => '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>',
     ];
     echo '<header class="top"><a class="brand" href="students.php"><img src="/app/assets/logo-mark.png" alt="" width="30" height="30"><b>עלמא</b></a><nav>';
@@ -208,10 +210,13 @@ function page_head(string $title, bool $nav = true): void {
     foreach ($main as $f => $l)
       echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . ' title="' . e($l) . '">' . $ic($icons[$f]) . '<span>' . e($l) . '</span></a>';
     if ($u['role'] === 'admin') {
-      $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'backups.php' => 'גיבויים', 'archive.php' => 'ארכיון', 'geo.php' => 'ערים ורחובות', 'settings.php' => 'הגדרות', 'release_notes.php' => 'מה חדש', 'health.php' => 'בדיקת מערכת'];
-      echo '<details class="menu' . (isset($adm[$on]) ? ' on' : '') . '"><summary title="ניהול">' . $ic($icons['admin']) . '<span>ניהול</span></summary><div class="dd">';
-      foreach ($adm as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';
-      echo '</div></details>';
+      $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'archive.php' => 'ארכיון', 'geo.php' => 'ערים ורחובות', 'settings.php' => 'הגדרות', 'release_notes.php' => 'מה חדש'];
+      $mnt = ['backups.php' => 'גיבויים', 'backup_log.php' => 'יומן גיבויים', 'health.php' => 'בדיקת מערכת'];
+      foreach ([['ניהול', 'admin', $adm], ['תחזוקה', 'maint', $mnt]] as [$tt, $ik, $set]) {
+        echo '<details class="menu' . (isset($set[$on]) ? ' on' : '') . '"><summary title="' . $tt . '">' . $ic($icons[$ik]) . '<span>' . $tt . '</span></summary><div class="dd">';
+        foreach ($set as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';
+        echo '</div></details>';
+      }
     }
     echo '</nav><form method="post" action="logout.php" class="inl">' . csrf_field() . '<span class="mu">' . e($u['name']) . '</span> <button class="lnk">יציאה</button></form></header>';
   }

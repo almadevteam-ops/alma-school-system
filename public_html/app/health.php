@@ -17,6 +17,8 @@ $checks['מפתח הצפנה (private/app.key) קיים'] = [is_file(PRIV . '/ap
 $checks['עדכוני מסד נתונים'] = [migrations_pending() ? 'ממתינים – יש להריץ בדף עדכון' : 'מעודכן', !migrations_pending()];
 $bk = bk_status(); $bkAge = isset($bk['time']) ? time() - (int)$bk['time'] : null;
 $checks['גיבוי אוטומטי אחרון'] = [!$bk ? 'עדיין לא בוצע – ראו דף גיבויים' : (empty($bk['ok']) ? 'נכשל: ' . ($bk['error'] ?? '') : date('d/m/Y H:i', (int)$bk['time'])), !empty($bk['ok']) && $bkAge < 36 * 3600];
+$bs = bk_state_load(); $bb = (int)($bs['beat'] ?? 0);
+$checks['גיבוי דלתא (כל 10 דקות)'] = [!$bb ? 'עדיין לא רץ – ראו דף גיבויים' : 'בדיקה אחרונה לפני ' . round((time() - $bb) / 60) . ' דקות', $bb && time() - $bb < 25 * 60];
 $checks['חיבור HTTPS'] = [is_https() ? 'כן' : 'לא', is_https()];
 $checks['גרסת מסד נתונים'] = [(string)db()->query('SELECT VERSION()')->fetchColumn(), true];
 $checks['תיקיית סשנים כתיבה'] = [is_writable(PRIV . '/sessions') ? 'כן' : 'לא', is_writable(PRIV . '/sessions')];

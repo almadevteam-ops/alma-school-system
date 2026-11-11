@@ -4,8 +4,9 @@ declare(strict_types=1);
 // הפענוח דורש את private/app.key – חובה לשמור אותו בנפרד (מחוץ לשרת)!
 const BK_MAGIC = 'ALMB1';
 const BK_CHUNK = 1048576;
-const BK_KEEP_DAILY = 14;
-const BK_KEEP_WEEKLY = 8;
+const BK_KEEP_DAILY = 7;     // גיבויים מלאים יומיים בשרת
+const BK_KEEP_WEEKLY = 4;    // ועוד מלאים של ימי ראשון
+const BK_DELTA_DAYS = 3;     // דלתאות נשמרות 3 ימים
 
 function bk_dir(): string {
   $d = PRIV . '/backups';
@@ -26,6 +27,14 @@ function bk_list(): array {
   return $out;
 }
 
+/** כל הקבצים (מלאים ודלתאות), מהישן לחדש. */
+function bk_stamp(string $name): string { return preg_match('/(\d{8}-\d{6})/', $name, $m) ? $m[1] : ''; }
+function bk_list_all(): array {
+  $out = [];
+  foreach (array_merge(glob(bk_dir() . '/alma-backup-*.almb') ?: [], glob(bk_dir() . '/alma-delta-*.almb') ?: []) as $f) { $n = basename($f); $out[] = ['name' => $n, 'type' => strpos($n, 'alma-delta-') === 0 ? 'delta' : 'full', 'size' => (int)filesize($f), 'time' => (int)filemtime($f)]; }
+  usort($out, fn($a, $b) => strcmp(bk_stamp($a['name']), bk_stamp($b['name'])));
+  return $out;
+}
 /** כותב זרם מוצפן במנות. */
 final class BkWriter {
   private $fh; private string $buf = ''; private int $i = 0; private string $key;
@@ -53,6 +62,9 @@ final class BkWriter {
     while ($left > 0) { $d = fread($in, min(262144, $left)); if ($d === false || $d === '') throw new RuntimeException('read failed: ' . $name); $left -= strlen($d); hash_update($h, $d); $this->write($d); }
     fclose($in);
     $this->write(hash_final($h, true));
+  }
+  public function addString(string $name, string $content): void {
+    $this->write(pack('n', strlen($name)) . $name . pack('J', strlen($content)) . $content . hash('sha256', $content, true));
   }
   public function close(): void {
     $this->write(pack('n', 0));
@@ -103,72 +115,12 @@ function bk_pdo(): PDO {
     PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false,
   ]);
 }
-/** דוגם את כל המסד לקובץ gz. מחזיר מספר שורות. */
-function bk_dump_db(string $gzPath): int {
-  $pdo = bk_pdo(); $gz = gzopen($gzPath, 'wb6'); if (!$gz) throw new RuntimeException('cannot write dump');
-  gzwrite($gz, "-- Alma backup " . date('c') . "\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\nSET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n\n");
-  $tables = $pdo->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_NUM);
-  $rows = 0;
-  foreach ($tables as [$t]) {
-    $q = '`' . str_replace('`', '``', (string)$t) . '`';
-    $cr = $pdo->query('SHOW CREATE TABLE ' . $q)->fetch(PDO::FETCH_NUM);
-    gzwrite($gz, "DROP TABLE IF EXISTS $q;\n" . $cr[1] . ";\n\n");
-    $st = $pdo->query('SELECT * FROM ' . $q); $batch = [];
-    $flush = function () use (&$batch, $gz, $q) { if ($batch) { gzwrite($gz, "INSERT INTO $q VALUES\n" . implode(",\n", $batch) . ";\n"); $batch = []; } };
-    while ($r = $st->fetch(PDO::FETCH_NUM)) {
-      $batch[] = '(' . implode(',', array_map(fn($v) => $v === null ? 'NULL' : (is_int($v) || is_float($v) ? (string)$v : $pdo->quote((string)$v)), $r)) . ')';
-      $rows++; if (count($batch) >= 200) $flush();
-    }
-    $flush(); $st->closeCursor(); gzwrite($gz, "\n");
-  }
-  gzwrite($gz, "SET FOREIGN_KEY_CHECKS=1;\n"); gzclose($gz);
-  return $rows;
-}
-function bk_prune(): int {
-  $all = bk_list(); $keep = [];
-  foreach (array_slice($all, 0, BK_KEEP_DAILY) as $b) $keep[$b['name']] = 1;
-  $w = 0;
-  foreach ($all as $b) { // שבועי: הגיבוי הראשון של כל שבוע (לפי תאריך בשם)
-    if ($w >= BK_KEEP_WEEKLY) break;
-    if (preg_match('/alma-backup-(\d{8})-/', $b['name'], $m) && date('w', strtotime($m[1])) === '0') { $keep[$b['name']] = 1; $w++; }
-  }
-  $del = 0;
-  foreach ($all as $b) if (empty($keep[$b['name']])) { @unlink(bk_dir() . '/' . $b['name']); $del++; }
-  return $del;
-}
-/** מריץ גיבוי מלא. מחזיר [ok, הודעה]. */
-function bk_run(): array {
-  $dir = bk_dir(); $lock = fopen($dir . '/.lock', 'c');
-  if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) return [false, 'גיבוי אחר רץ כרגע.'];
-  @set_time_limit(0); $t0 = microtime(true); $tmpDump = $dir . '/tmp-dump-' . bin2hex(random_bytes(4)) . '.sql.gz';
-  $name = 'alma-backup-' . date('Ymd-His') . '.almb'; $final = $dir . '/' . $name; $part = $final . '.part';
-  try {
-    $rows = bk_dump_db($tmpDump);
-    $w = new BkWriter($part);
-    $w->addFile('db.sql.gz', $tmpDump);
-    $nf = 0;
-    foreach (glob(PRIV . '/storage/*.bin') ?: [] as $f) { if (!preg_match('/^[0-9a-f]{32}\.bin$/', basename($f))) continue; $w->addFile('storage/' . basename($f), $f); $nf++; }
-    $w->close();
-    $names = []; $listed = bk_read($part, function ($n) use (&$names) { $names[] = $n; }); // אימות: פענוח מלא + checksum
-    if (count($listed) !== $nf + 1) throw new RuntimeException('verify: entry count mismatch');
-    rename($part, $final); @unlink($tmpDump);
-    $pruned = bk_prune();
-    $st = ['ok' => true, 'time' => time(), 'file' => $name, 'size' => (int)filesize($final), 'rows' => $rows, 'files' => $nf, 'secs' => round(microtime(true) - $t0, 1), 'pruned' => $pruned];
-    file_put_contents(bk_status_file(), json_encode($st));
-    return [true, "הגיבוי הושלם: $name · " . round($st['size'] / 1048576, 2) . "MB · $rows שורות · $nf קבצים"];
-  } catch (Throwable $t) {
-    @unlink($tmpDump); @unlink($part);
-    error_log('[alma-backup] ' . $t->getMessage());
-    file_put_contents(bk_status_file(), json_encode(['ok' => false, 'time' => time(), 'error' => $t->getMessage()]));
-    return [false, 'הגיבוי נכשל: ' . $t->getMessage()];
-  } finally { flock($lock, LOCK_UN); fclose($lock); }
-}
 /** שחזור לתיקיה: db.sql.gz ו-storage/*.bin. */
 function bk_extract(string $file, string $outDir): array {
   if (!is_dir($outDir) && !@mkdir($outDir, 0700, true)) throw new RuntimeException('cannot create out dir');
   @mkdir($outDir . '/storage', 0700, true);
   return bk_read($file, function ($n, $tmp) use ($outDir) {
-    if ($n !== 'db.sql.gz' && !preg_match('#^storage/[0-9a-f]{32}\.bin$#', $n)) return; // לעולם לא כותבים נתיב אחר
+    if (!in_array($n, ['db.sql.gz', 'delta.sql.gz', 'meta.json'], true) && !preg_match('#^storage/[0-9a-f]{32}\.bin$#', $n)) return; // לעולם לא כותבים נתיב אחר
     copy($tmp, $outDir . '/' . $n);
   });
 }
