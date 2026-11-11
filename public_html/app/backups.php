@@ -10,6 +10,7 @@ function gds_suggest(): string {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? '');
+  if (in_array($act, ['gd_save', 'gds_save'], true) && gd_ready() && ($_POST['gd_confirm'] ?? '') !== '1') { $ok = false; $msg = 'כדי לשנות חיבור קיים סמנו את תיבת האישור.'; $act = 'noop'; $_GET['edit'] = '1'; }
   if ($act === 'run') { [$ok, $msg] = bk_run(); audit('backup_run', 'system', '', $ok ? 'ידני: הצלחה' : 'ידני: ' . $msg); }
   elseif ($act === 'gd_save') {
     $cl = trim((string)($_POST['gd_client'] ?? '')); $fo = trim((string)($_POST['gd_folder'] ?? ''));
@@ -44,6 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 }
+$edit = isset($_GET['edit']) || !gd_ready(); $showCode = !gd_ready() || isset($_GET['code']);
+$bb = (int)(bk_state_load()['beat'] ?? 0); $healthy = $bb && time() - $bb < 25 * 60;
 $st = bk_status(); $list = array_reverse(bk_list_all()); $bs = bk_state_load(); $dst = $bs['drive'] ?? [];
 $age = isset($st['time']) ? time() - (int)$st['time'] : null;
 $php = defined('PHP_BINARY') && PHP_BINARY && strpos(PHP_BINARY, 'php') !== false && PHP_SAPI !== 'cli' ? '/usr/local/bin/php' : '/usr/local/bin/php';
@@ -71,7 +74,12 @@ page_head('גיבויים');
 <div class="card">
   <h2>עותק בגוגל דרייב</h2>
   <?php if (!empty($dst['time'])): ?><p class="<?= !empty($dst['ok']) ? 'ok' : 'er' ?>">פעילות אחרונה: <?= e(date('d/m/Y H:i', (int)$dst['time'])) ?> · <?= !empty($dst['ok']) ? e((string)($dst['file'] ?? '')) : e($dst['error'] ?? '') ?></p><?php elseif (!gd_ready()): ?><p class="mu">לא הוגדר. הגיבוי מוצפן, ולכן בטוח לשמור אותו בדרייב. אחרי ההגדרה, כל קובץ גיבוי (מלא או דלתא) יועלה לתיקיה אוטומטית.</p><?php endif; ?>
-  <?php $sk = gd_get('sskey') !== '' ? gd_get('sskey') : gds_suggest(); $code = str_replace('הדביקו כאן סיסמה ארוכה שהמערכת הציעה', $sk, (string)(require PRIV . '/lib/gdrive_script.php')); ?>
+  <?php if (!$edit): ?>
+    <p>מחובר <b>✓</b> דרך <?= gd_mode() === 'script' ? 'Google Apps Script' : 'Google Cloud (OAuth)' ?>. הפרטים מוסתרים כדי שלא ישתנו בטעות.</p>
+    <form method="post" class="bar"><?= csrf_field() ?><button name="act" value="gd_check" class="sec">בדיקת חיבור</button><button name="act" value="gd_run">סנכרון לדרייב עכשיו</button><a href="?edit=1">עריכת חיבור</a></form>
+  <?php else: ?>
+  <?php if (gd_ready()): ?><p class="er">מצב עריכה: שינוי הפרטים עלול לנתק את הגיבוי לדרייב. <a href="backups.php">ביטול וחזרה</a></p><?php endif; ?>
+  <?php if ($showCode) { $sk = gd_get('sskey') !== '' ? gd_get('sskey') : gds_suggest(); } $code = str_replace('הדביקו כאן סיסמה ארוכה שהמערכת הציעה', $sk, (string)(require PRIV . '/lib/gdrive_script.php')); ?>
   <details<?= gd_mode() === 'script' || !gd_ready() ? ' open' : '' ?>><summary><b>חיבור פשוט: Google Apps Script</b> (מומלץ, בלי Google Cloud ובלי כרטיס אשראי)</summary>
     <ol>
       <li>בדרייב של החשבון שיחזיק את הגיבויים: יוצרים תיקיה "גיבויי עלמא", פותחים אותה, ומעתיקים מהכתובת את המזהה (הטקסט שאחרי <span dir="ltr"><code>/folders/</code></span>).</li>
@@ -79,9 +87,10 @@ page_head('גיבויים');
       <li>לוחצים <b>Deploy ← New deployment</b>, בגלגל בוחרים <b>Web app</b>. Execute as: <b>Me</b>. Who has access: <b>Anyone</b>. לוחצים Deploy ומאשרים הרשאות (Advanced ← Go to project ← Allow).</li>
       <li>מעתיקים את ה-<b>Web app URL</b> (נגמר ב-<span dir="ltr"><code>/exec</code></span>) ומדביקים כאן.</li>
     </ol>
-    <textarea readonly rows="10" dir="ltr" class="wide"><?= htmlspecialchars($code, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
+    <?php if (!$showCode): ?><p><a href="?edit=1&amp;code=1">הצגת קוד הסקריפט (כולל הסיסמה המשותפת)</a></p><?php else: ?>
+    <textarea readonly rows="10" dir="ltr" class="wide"><?= htmlspecialchars($code, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea><?php endif; ?>
     <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="gds_save">
-      <label>כתובת ה-Web App<input name="gds_url" dir="ltr" class="wide" value="<?= e(gd_get('url')) ?>" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off"></label><button>שמירה</button></form>
+      <label>כתובת ה-Web App<input name="gds_url" dir="ltr" class="wide" value="<?= e(gd_get('url')) ?>" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off"></label><?php if (gd_ready()): ?><label><input type="checkbox" name="gd_confirm" value="1"> אני מבין/ה ששינוי עלול לנתק את הגיבוי לדרייב</label><?php endif; ?><button>שמירה</button></form>
     <p class="mu">הסקריפט יכול לגעת רק בתיקיה שהגדרתם, ורק בקבצים ששמם הוא של גיבוי עלמא. הכתובת לבדה לא מספיקה לאף אחד: בלי הסיסמה המשותפת הסקריפט מסרב. אם תחליפו את הקוד בסקריפט, צריך Deploy ← Manage deployments ← עריכה ← New version כדי שהשינוי ייכנס לתוקף.</p>
   </details>
   <details<?= gd_mode() === 'oauth' && gd_ready() ? ' open' : '' ?>><summary>חיבור חלופי: OAuth דרך Google Cloud</summary>
@@ -89,7 +98,7 @@ page_head('גיבויים');
     <label>Client ID<input name="gd_client" dir="ltr" class="wide" value="<?= e(gd_get('client')) ?>" autocomplete="off"></label>
     <label>Client Secret<input name="gd_secret" type="password" dir="ltr" placeholder="<?= gd_get('secret') !== '' ? 'שמור (השאירו ריק כדי לא לשנות)' : '' ?>" autocomplete="off"></label>
     <label>Refresh Token<input name="gd_refresh" type="password" dir="ltr" placeholder="<?= gd_get('refresh') !== '' ? 'שמור (השאירו ריק כדי לא לשנות)' : '' ?>" autocomplete="off"></label>
-    <label>תיקיה (קישור או מזהה)<input name="gd_folder" dir="ltr" class="wide" value="<?= e(gd_get('folder')) ?>" autocomplete="off"></label><button>שמירה</button></form>
+    <label>תיקיה (קישור או מזהה)<input name="gd_folder" dir="ltr" class="wide" value="<?= e(gd_get('folder')) ?>" autocomplete="off"></label><?php if (gd_ready()): ?><label><input type="checkbox" name="gd_confirm" value="1"> אני מבין/ה ששינוי עלול לנתק את הגיבוי לדרייב</label><?php endif; ?><button>שמירה</button></form>
   <details><summary>איך מקבלים את הפרטים (פעם אחת, כ-10 דקות)</summary><ol>
     <li>ב-<span dir="ltr">console.cloud.google.com</span> יוצרים פרויקט, מפעילים <b>Google Drive API</b>, ובמסך OAuth consent מוסיפים את המייל שלכם כ-Test user.</li>
     <li>ב-Credentials יוצרים <b>OAuth client ID</b> מסוג Web application, ומוסיפים Authorized redirect URI: <span dir="ltr"><code>https://developers.google.com/oauthplayground</code></span>. מעתיקים את ה-Client ID וה-Secret.</li>
@@ -98,9 +107,10 @@ page_head('גיבויים');
   </ol><p class="mu">הקובץ שעולה מוצפן במפתח המערכת, כך שגם מי שיקבל גישה לדרייב לא יוכל לקרוא אותו. את מפתח ההצפנה (<span dir="ltr">private/app.key</span>) שומרים בנפרד.</p></details>
   </details>
   <?php if (gd_ready()): ?><form method="post" class="bar"><?= csrf_field() ?><button name="act" value="gd_check" class="sec">בדיקת חיבור</button><button name="act" value="gd_run">סנכרון לדרייב עכשיו</button></form><?php endif; ?>
+  <?php endif; ?>
 </div>
 <div class="card">
-  <h2>הפעלה אוטומטית (פעם אחת)</h2>
+  <details<?= $healthy ? '' : ' open' ?>><summary><h2 class="inl">הפעלה אוטומטית (cron)<?= $healthy ? ' ✓ פועל' : '' ?></h2></summary>
   <ol>
     <li>ב-cPanel פתחו <b>Cron Jobs</b>.</li>
     <li>בשדות הזמן הקלידו ידנית: Minute <span dir="ltr"><code>*/10</code></span>, ובכל שאר השדות (Hour, Day, Month, Weekday) <span dir="ltr"><code>*</code></span>. אם כבר הוגדרה הרצה יומית, ערכו אותה לכל 10 דקות.</li>
@@ -108,13 +118,15 @@ page_head('גיבויים');
     <li>זה הכול: הסקריפט מחליט לבד מתי לעשות גיבוי מלא (פעם ביום אחרי 02:00) ומתי דלתא.</li>
   </ol>
   <p class="mu">אם הנתיב ל-PHP אצלכם שונה, cPanel מציג את הנתיב הנכון בדף ה-Cron Jobs.</p>
+</details>
 </div>
 <div class="card">
-  <h2>חשוב: שומרים מחוץ לשרת</h2>
+  <details<?= $healthy && gd_ready() ? '' : ' open' ?>><summary><h2 class="inl">חשוב: שומרים מחוץ לשרת (ערכת שחזור)</h2></summary>
   <ul>
     <li><b>ערכת שחזור:</b> בלי <span dir="ltr"><code>app.key</code></span> אי אפשר לפתוח אף גיבוי, וגם ההגדרות (<span dir="ltr"><code>config.php</code></span>) לא נמצאות בגיבוי. הורידו את הערכת פעם אחת, שמרו אותה אצלכם ושלחו אותה לעצמכם במייל (כדאי גם לשמור במנהל סיסמאות). הורידו שוב אחרי כל שינוי בהגדרות.</li>
     <li><b>שחזור:</b> במקרה אסון, ראו את מסמך <span dir="ltr"><code>docs/DISASTER_RECOVERY.md</code></span> במאגר (שלבים מפורטים, כולל שחזור לנקודת זמן).</li>
   </ul>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="kit"><label><input type="checkbox" name="kit_ok" value="1"> אני מבין/ה שהקובץ רגיש ושומר/ת אותו רק במקום בטוח</label><button class="sec">הורדת ערכת שחזור</button></form>
+</details>
 </div>
 <?php page_foot();
