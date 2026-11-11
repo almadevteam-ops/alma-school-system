@@ -2,6 +2,11 @@
 require __DIR__ . '/../../private/lib/bootstrap.php';
 $me = require_role(['admin']);
 $msg = ''; $ok = null;
+/** סיסמה משותפת בין המערכת לסקריפט: נוצרת פעם אחת ונשמרת מוצפנת עד לשמירת החיבור. */
+function gds_suggest(): string {
+  $v = setting_get('gd_sskey_sugg', ''); $k = $v !== '' ? dec_bytes((string)base64_decode($v, true), 'gdrive') : null;
+  if ($k) return $k; $k = bin2hex(random_bytes(20)); setting_set('gd_sskey_sugg', base64_encode(enc_bytes($k, 'gdrive')), 'system'); return $k;
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? '');
@@ -10,7 +15,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cl = trim((string)($_POST['gd_client'] ?? '')); $fo = trim((string)($_POST['gd_folder'] ?? ''));
     if (preg_match('~/folders/([A-Za-z0-9_-]+)~', $fo, $mm)) $fo = $mm[1];
     if ($cl === '' || !preg_match('/^[A-Za-z0-9_-]{10,}$/', $fo)) { $ok = false; $msg = 'נא למלא Client ID ומזהה תיקיה (אפשר להדביק את קישור התיקיה).'; }
-    else { gd_save($cl, trim((string)($_POST['gd_secret'] ?? '')), trim((string)($_POST['gd_refresh'] ?? '')), $fo, (string)($me['name'] ?: $me['username'])); audit('gdrive_save', 'system', '', 'הגדרות דרייב עודכנו'); $ok = true; $msg = 'נשמר. לחצו "בדיקת חיבור".'; }
+    else { setting_set('gd_mode', 'oauth', (string)($me['name'] ?: $me['username'])); gd_save($cl, trim((string)($_POST['gd_secret'] ?? '')), trim((string)($_POST['gd_refresh'] ?? '')), $fo, (string)($me['name'] ?: $me['username'])); audit('gdrive_save', 'system', '', 'הגדרות דרייב עודכנו'); $ok = true; $msg = 'נשמר. לחצו "בדיקת חיבור".'; }
+  } elseif ($act === 'gds_save') {
+    $u = trim((string)($_POST['gds_url'] ?? ''));
+    if (!preg_match('~^https://script\.google\.com/macros/s/[A-Za-z0-9_-]+/exec$~', $u)) { $ok = false; $msg = 'הדביקו את כתובת ה-Web App המלאה (נגמרת ב-/exec).'; }
+    else { $key = gd_get('sskey') !== '' ? '' : gds_suggest(); gd_save_script($u, $key, (string)($me['name'] ?: $me['username'])); setting_set('gd_sskey_sugg', '', 'system'); audit('gdrive_save', 'system', '', 'חיבור דרייב דרך Apps Script עודכן'); $ok = true; $msg = 'נשמר. לחצו "בדיקת חיבור".'; }
   } elseif ($act === 'gd_check') {
     try { $n = gd_check(); $ok = true; $msg = 'החיבור תקין. תיקיית היעד: ' . $n; } catch (Throwable $t) { $ok = false; $msg = $t->getMessage(); }
   } elseif ($act === 'gd_run') {
@@ -62,18 +71,33 @@ page_head('גיבויים');
 <div class="card">
   <h2>עותק בגוגל דרייב</h2>
   <?php if (!empty($dst['time'])): ?><p class="<?= !empty($dst['ok']) ? 'ok' : 'er' ?>">פעילות אחרונה: <?= e(date('d/m/Y H:i', (int)$dst['time'])) ?> · <?= !empty($dst['ok']) ? e((string)($dst['file'] ?? '')) : e($dst['error'] ?? '') ?></p><?php elseif (!gd_ready()): ?><p class="mu">לא הוגדר. הגיבוי מוצפן, ולכן בטוח לשמור אותו בדרייב. אחרי ההגדרה, כל קובץ גיבוי (מלא או דלתא) יועלה לתיקיה אוטומטית.</p><?php endif; ?>
+  <?php $sk = gd_get('sskey') !== '' ? gd_get('sskey') : gds_suggest(); $code = str_replace('הדביקו כאן סיסמה ארוכה שהמערכת הציעה', $sk, (string)(require PRIV . '/lib/gdrive_script.php')); ?>
+  <details<?= gd_mode() === 'script' || !gd_ready() ? ' open' : '' ?>><summary><b>חיבור פשוט: Google Apps Script</b> (מומלץ, בלי Google Cloud ובלי כרטיס אשראי)</summary>
+    <ol>
+      <li>בדרייב של החשבון שיחזיק את הגיבויים: יוצרים תיקיה "גיבויי עלמא", פותחים אותה, ומעתיקים מהכתובת את המזהה (הטקסט שאחרי <span dir="ltr"><code>/folders/</code></span>).</li>
+      <li>נכנסים ל-<span dir="ltr">script.google.com</span> (עם אותו חשבון) ← <b>New project</b>. מוחקים את הקוד שיש ומדביקים את הקוד שלמטה. בשורה <span dir="ltr"><code>FOLDER_ID</code></span> מחליפים את הטקסט במזהה התיקיה. הסיסמה כבר מולאה.</li>
+      <li>לוחצים <b>Deploy ← New deployment</b>, בגלגל בוחרים <b>Web app</b>. Execute as: <b>Me</b>. Who has access: <b>Anyone</b>. לוחצים Deploy ומאשרים הרשאות (Advanced ← Go to project ← Allow).</li>
+      <li>מעתיקים את ה-<b>Web app URL</b> (נגמר ב-<span dir="ltr"><code>/exec</code></span>) ומדביקים כאן.</li>
+    </ol>
+    <textarea readonly rows="10" dir="ltr" class="wide"><?= htmlspecialchars($code, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
+    <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="gds_save">
+      <label>כתובת ה-Web App<input name="gds_url" dir="ltr" class="wide" value="<?= e(gd_get('url')) ?>" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off"></label><button>שמירה</button></form>
+    <p class="mu">הסקריפט יכול לגעת רק בתיקיה שהגדרתם, ורק בקבצים ששמם הוא של גיבוי עלמא. הכתובת לבדה לא מספיקה לאף אחד: בלי הסיסמה המשותפת הסקריפט מסרב. אם תחליפו את הקוד בסקריפט, צריך Deploy ← Manage deployments ← עריכה ← New version כדי שהשינוי ייכנס לתוקף.</p>
+  </details>
+  <details<?= gd_mode() === 'oauth' && gd_ready() ? ' open' : '' ?>><summary>חיבור חלופי: OAuth דרך Google Cloud</summary>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="gd_save">
     <label>Client ID<input name="gd_client" dir="ltr" class="wide" value="<?= e(gd_get('client')) ?>" autocomplete="off"></label>
     <label>Client Secret<input name="gd_secret" type="password" dir="ltr" placeholder="<?= gd_get('secret') !== '' ? 'שמור (השאירו ריק כדי לא לשנות)' : '' ?>" autocomplete="off"></label>
     <label>Refresh Token<input name="gd_refresh" type="password" dir="ltr" placeholder="<?= gd_get('refresh') !== '' ? 'שמור (השאירו ריק כדי לא לשנות)' : '' ?>" autocomplete="off"></label>
     <label>תיקיה (קישור או מזהה)<input name="gd_folder" dir="ltr" class="wide" value="<?= e(gd_get('folder')) ?>" autocomplete="off"></label><button>שמירה</button></form>
-  <?php if (gd_ready()): ?><form method="post" class="bar"><?= csrf_field() ?><button name="act" value="gd_check" class="sec">בדיקת חיבור</button><button name="act" value="gd_run">סנכרון לדרייב עכשיו</button></form><?php endif; ?>
   <details><summary>איך מקבלים את הפרטים (פעם אחת, כ-10 דקות)</summary><ol>
     <li>ב-<span dir="ltr">console.cloud.google.com</span> יוצרים פרויקט, מפעילים <b>Google Drive API</b>, ובמסך OAuth consent מוסיפים את המייל שלכם כ-Test user.</li>
     <li>ב-Credentials יוצרים <b>OAuth client ID</b> מסוג Web application, ומוסיפים Authorized redirect URI: <span dir="ltr"><code>https://developers.google.com/oauthplayground</code></span>. מעתיקים את ה-Client ID וה-Secret.</li>
     <li>נכנסים ל-<span dir="ltr">developers.google.com/oauthplayground</span>, בגלגל השיניים מסמנים Use your own OAuth credentials ומדביקים אותם, בוחרים את ההרשאה <span dir="ltr"><code>https://www.googleapis.com/auth/drive</code></span>, מאשרים, ולוחצים Exchange authorization code. מעתיקים את <b>Refresh token</b>.</li>
     <li>יוצרים בדרייב תיקיה ייעודית (למשל "גיבויי עלמא") ומדביקים כאן את הקישור שלה.</li>
   </ol><p class="mu">הקובץ שעולה מוצפן במפתח המערכת, כך שגם מי שיקבל גישה לדרייב לא יוכל לקרוא אותו. את מפתח ההצפנה (<span dir="ltr">private/app.key</span>) שומרים בנפרד.</p></details>
+  </details>
+  <?php if (gd_ready()): ?><form method="post" class="bar"><?= csrf_field() ?><button name="act" value="gd_check" class="sec">בדיקת חיבור</button><button name="act" value="gd_run">סנכרון לדרייב עכשיו</button></form><?php endif; ?>
 </div>
 <div class="card">
   <h2>הפעלה אוטומטית (פעם אחת)</h2>

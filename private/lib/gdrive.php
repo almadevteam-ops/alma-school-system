@@ -5,7 +5,7 @@ declare(strict_types=1);
 function gd_url(string $k): string { return (string)cfg($k === 'token' ? 'gd_token_url' : 'gd_api', $k === 'token' ? 'https://oauth2.googleapis.com/token' : 'https://www.googleapis.com'); }
 function gd_get(string $k): string {
   $v = setting_get('gd_' . $k, ''); if ($v === '') return '';
-  if (in_array($k, ['secret', 'refresh'], true)) { $p = dec_bytes((string)base64_decode($v, true), 'gdrive'); return $p ?? ''; }
+  if (in_array($k, ['secret', 'refresh', 'sskey'], true)) { $p = dec_bytes((string)base64_decode($v, true), 'gdrive'); return $p ?? ''; }
   return $v;
 }
 function gd_save(string $client, string $secret, string $refresh, string $folder, string $by): void {
@@ -13,7 +13,26 @@ function gd_save(string $client, string $secret, string $refresh, string $folder
   if ($secret !== '') setting_set('gd_secret', base64_encode(enc_bytes($secret, 'gdrive')), $by);
   if ($refresh !== '') setting_set('gd_refresh', base64_encode(enc_bytes($refresh, 'gdrive')), $by);
 }
-function gd_ready(): bool { return gd_get('client') !== '' && gd_get('secret') !== '' && gd_get('refresh') !== '' && gd_get('folder') !== ''; }
+/** שני מצבי חיבור: oauth (פרויקט ב-Google Cloud) או script (Google Apps Script שמפורסם כ-Web App, בלי Cloud ובלי כרטיס אשראי). */
+function gd_mode(): string { return setting_get('gd_mode', '') === 'script' ? 'script' : 'oauth'; }
+function gd_save_script(string $url, string $key, string $by): void {
+  setting_set('gd_url', $url, $by); if ($key !== '') setting_set('gd_sskey', base64_encode(enc_bytes($key, 'gdrive')), $by); setting_set('gd_mode', 'script', $by);
+}
+function gd_ready(): bool {
+  if (gd_mode() === 'script') return gd_get('url') !== '' && gd_get('sskey') !== '';
+  return gd_get('client') !== '' && gd_get('secret') !== '' && gd_get('refresh') !== '' && gd_get('folder') !== '';
+}
+/** קריאה ל-Web App של Apps Script. הוא עונה ב-302 לכתובת התוצאה, ולכן עוקבים (ה-POST הופך ל-GET, וזה מה שנדרש). */
+function gd_script(array $payload): array {
+  $url = gd_get('url'); if (!preg_match('~^https://script\.google\.com/~', $url) && !cfg('gd_script_any', false)) throw new RuntimeException('כתובת ה-Web App חייבת להתחיל ב-https://script.google.com/');
+  $c = curl_init($url); curl_setopt_array($c, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload + ['secret' => gd_get('sskey')]), CURLOPT_HTTPHEADER => ['Content-Type: text/plain;charset=utf-8'], CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 5, CURLOPT_TIMEOUT => 120, CURLOPT_CONNECTTIMEOUT => 20]);
+  $out = curl_exec($c); $code = (int)curl_getinfo($c, CURLINFO_RESPONSE_CODE); $er = curl_error($c); curl_close($c);
+  if ($out === false) throw new RuntimeException('שגיאת רשת: ' . $er);
+  $j = json_decode((string)$out, true);
+  if (!is_array($j)) throw new RuntimeException('תשובה לא צפויה מה-Web App (' . $code . '). ודאו שהפרסום הוגדר "Anyone" ושמדובר בגרסה האחרונה.');
+  if (empty($j['ok'])) throw new RuntimeException('Apps Script: ' . ($j['error'] ?? 'שגיאה'));
+  return $j;
+}
 /** בקשת HTTP. מחזיר [קוד, כותרות, גוף]. $file – קובץ להעלאה בזרימה. */
 function gd_http(string $method, string $url, array $hdr = [], $body = null, ?string $file = null): array {
   $c = curl_init($url); $heads = [];
@@ -33,13 +52,13 @@ function gd_token(): string {
   return (string)$j['access_token'];
 }
 /** בודק גישה לתיקיה. מחזיר שם התיקיה. */
-function gd_check(): string {
+function gd_o_check(): string {
   $t = gd_token(); [$code, , $b] = gd_http('GET', gd_url('api') . '/drive/v3/files/' . rawurlencode(gd_get('folder')) . '?fields=id,name,mimeType&supportsAllDrives=true', ['Authorization: Bearer ' . $t]);
   $j = json_decode($b, true); if ($code !== 200 || ($j['mimeType'] ?? '') !== 'application/vnd.google-apps.folder') throw new RuntimeException('התיקיה לא נמצאה או שאין גישה אליה (' . $code . ').');
   return (string)$j['name'];
 }
 /** מעלה קובץ לתיקיה (בלי למחוק כלום). מחזיר [מזהה, שם]. */
-function gd_upload_file(string $path): array {
+function gd_o_upload_file(string $path): array {
   $auth = ['Authorization: Bearer ' . gd_token()]; $name = basename($path);
   [$code, $h] = gd_http('POST', gd_url('api') . '/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true', array_merge($auth, ['Content-Type: application/json; charset=UTF-8', 'X-Upload-Content-Type: application/octet-stream', 'X-Upload-Content-Length: ' . filesize($path)]), json_encode(['name' => $name, 'parents' => [gd_get('folder')]]));
   if ($code !== 200 || empty($h['location'])) throw new RuntimeException('פתיחת ההעלאה נכשלה (' . $code . ').');
@@ -48,7 +67,7 @@ function gd_upload_file(string $path): array {
   $j = json_decode($b2, true); return [(string)($j['id'] ?? ''), $name];
 }
 /** רשימת קבצי הגיבוי בתיקיה: [id, name, size]. */
-function gd_list(): array {
+function gd_o_list(): array {
   $auth = ['Authorization: Bearer ' . gd_token()]; $out = []; $page = '';
   do {
     $q = "'" . gd_get('folder') . "' in parents and trashed = false and name contains 'alma-'";
@@ -61,7 +80,24 @@ function gd_list(): array {
   } while ($page !== '');
   return $out;
 }
-function gd_delete(string $id): bool { [$c] = gd_http('DELETE', gd_url('api') . '/drive/v3/files/' . rawurlencode($id) . '?supportsAllDrives=true', ['Authorization: Bearer ' . gd_token()]); return $c === 204 || $c === 200; }
+function gd_o_delete(string $id): bool { [$c] = gd_http('DELETE', gd_url('api') . '/drive/v3/files/' . rawurlencode($id) . '?supportsAllDrives=true', ['Authorization: Bearer ' . gd_token()]); return $c === 204 || $c === 200; }
+
+/** בודק גישה לתיקיה. מחזיר שם התיקיה. */
+function gd_check(): string { if (gd_mode() === 'script') return (string)gd_script(['action' => 'check'])['name']; return gd_o_check(); }
+/** מעלה קובץ לתיקיה (בלי למחוק כלום). מחזיר [מזהה, שם]. */
+function gd_upload_file(string $path): array {
+  if (gd_mode() !== 'script') return gd_o_upload_file($path);
+  $name = basename($path); $j = gd_script(['action' => 'init', 'name' => $name, 'size' => filesize($path)]);   // ה-Web App פותח הפעלת העלאה; הקובץ עצמו עולה ישירות לגוגל
+  [$code, , $b] = gd_http('PUT', (string)$j['url'], ['Content-Type: application/octet-stream'], null, $path);
+  if ($code !== 200 && $code !== 201) throw new RuntimeException('ההעלאה נכשלה (' . $code . ').');
+  $r = json_decode($b, true); return [(string)($r['id'] ?? ''), $name];
+}
+function gd_list(): array {
+  if (gd_mode() !== 'script') return gd_o_list();
+  $out = []; foreach (gd_script(['action' => 'list'])['files'] ?? [] as $f) if (preg_match('/^alma-(backup|delta)-\d{8}-\d{6}\.almb$/', (string)($f['name'] ?? ''))) $out[] = ['id' => (string)$f['id'], 'name' => (string)$f['name'], 'size' => (int)($f['size'] ?? 0)];
+  return $out;
+}
+function gd_delete(string $id): bool { if (gd_mode() !== 'script') return gd_o_delete($id); try { gd_script(['action' => 'delete', 'id' => $id]); return true; } catch (Throwable $t) { return false; } }
 /** תאימות לאחור. */
 function gd_upload(string $path): array { [, $n] = gd_upload_file($path); return [$n, 0]; }
 /** העלאת מה שחסר בדרייב + שימור (ראו bk_drive_sync ב-backup_delta.php). */
