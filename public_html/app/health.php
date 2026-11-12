@@ -20,6 +20,9 @@ $checks['גיבוי אוטומטי אחרון'] = [!$bk ? 'עדיין לא בו�
 $bs = bk_state_load(); $bb = (int)($bs['beat'] ?? 0);
 $checks['גיבוי דלתא (כל 10 דקות)'] = [!$bb ? 'עדיין לא רץ – ראו דף גיבויים' : 'בדיקה אחרונה לפני ' . round((time() - $bb) / 60) . ' דקות', $bb && time() - $bb < 25 * 60];
 $checks['חיבור HTTPS'] = [is_https() ? 'כן' : 'לא', is_https()];
+$de = PRIV . '/deploy_error.txt'; $la = PRIV . '/last_autodeploy.txt';
+if (is_file($de)) $checks['פריסה אוטומטית'] = ['נכשלה: ' . trim((string)file_get_contents($de)), false];
+elseif (is_file($la)) $checks['פריסה אוטומטית'] = ['הפריסה האחרונה: ' . trim((string)file_get_contents($la)), true];
 $checks['גרסת מסד נתונים'] = [(string)db()->query('SELECT VERSION()')->fetchColumn(), true];
 $checks['תיקיית סשנים כתיבה'] = [is_writable(PRIV . '/sessions') ? 'כן' : 'לא', is_writable(PRIV . '/sessions')];
 $checks['תיקיית קבצים (private/storage) כתיבה'] = [is_writable(PRIV . '/storage') ? 'כן' : 'לא', is_writable(PRIV . '/storage')];

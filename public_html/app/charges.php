@@ -19,7 +19,7 @@ $sel = (string)($_GET['l'] ?? '');
 page_head('גביות חד־פעמיות');
 ?>
 <h1>גביות חד־פעמיות</h1>
-<p class="subnav"><a class="btn sec" href="collection.php">‹ לגבייה</a> <a class="btn sec" href="collection.php#s-bulk">הוספת חיוב לכל התיקים</a></p>
+<p class="subnav"><a class="btn sec" href="collection.php">‹ לגבייה</a> <a class="btn sec" href="collection.php?open=bulk#s-bulk">הוספת חיוב לכל התיקים</a></p>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <div class="sc"><table><tr><th>גבייה</th><th>תיקים</th><th>צפוי</th><th>נגבה</th><th>בטיפול</th><th>חסר</th><th></th></tr>
 <?php foreach ($G as $g): $miss = max(0, (float)$g['ex'] - (float)$g['paid']); ?>
