@@ -34,6 +34,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'bulk_cha
     } catch (Throwable $t) { $pdo->rollBack(); throw $t; }
   }
 }
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['act'] ?? ''), ['cat_add', 'cat_del'], true)) {
+  csrf_check(); $by = (string)($u['name'] ?: $u['username']); $cc = charge_cats_custom(); $name = trim(preg_replace('/\s+/u', ' ', (string)($_POST['cat'] ?? '')));
+  if ($_POST['act'] === 'cat_add') {
+    if (mb_strlen($name) < 2 || mb_strlen($name) > 40) $err = 'שם הקטגוריה חייב להיות בין 2 ל-40 תווים.';
+    elseif (in_array(mb_strtolower($name), array_map('mb_strtolower', array_merge(array_values(CHARGE_KINDS), $cc)), true)) $err = 'קטגוריה בשם הזה כבר קיימת.';
+    elseif (count($cc) >= 30) $err = 'אפשר עד 30 קטגוריות נוספות. מחקו קטגוריה שאינה בשימוש.';
+    else { $cc[] = $name; charge_cats_save($cc, $by); audit('charge_cat_add', 'system', '', $name); $msg = "הקטגוריה \"$name\" נוספה. היא זמינה עכשיו בחיוב לכל התיקים ובחיובים נוספים בכל תיק."; }
+  } else {
+    if (in_array($name, $cc, true)) { charge_cats_save(array_values(array_diff($cc, [$name])), $by); audit('charge_cat_del', 'system', '', $name); $msg = "הקטגוריה \"$name\" הוסרה מהרשימה. חיובים שכבר נרשמו בה נשארים כמו שהם."; }
+  }
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'create_all') {
   csrf_check();
   if (empty($_POST['ok'])) $err = 'נא לאשר פתיחת תיקים לכל התלמידות.';
@@ -185,13 +196,22 @@ $badge = function (array $x): string {
 <?php sec_open('bulk', 'חיוב לכל התיקים', 'ספרי לימוד, סיור, חוגים', '＋', $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'bulk_charge' ? ['bulk'] : []); ?>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="bulk_charge">
     <label>קטגוריה<input name="label" maxlength="100" list="chg-cats" placeholder="למשל: ספרי לימוד" required></label>
-    <datalist id="chg-cats"><?php foreach (array_unique([...array_values(CHARGE_KINDS), ...array_column(db()->query("SELECT DISTINCT label FROM charges WHERE voided_at IS NULL ORDER BY label LIMIT 50")->fetchAll(), 'label')]) as $cv) if ($cv !== 'אחר') echo '<option value="' . e($cv) . '">'; ?></datalist>
+    <datalist id="chg-cats"><?php foreach (array_unique([...array_values(CHARGE_KINDS), ...charge_cats_custom(), ...array_column(db()->query("SELECT DISTINCT label FROM charges WHERE voided_at IS NULL ORDER BY label LIMIT 50")->fetchAll(), 'label')]) as $cv) if ($cv !== 'אחר') echo '<option value="' . e($cv) . '">'; ?></datalist>
     <label>אופן חישוב<select name="mode"><option value="flat">סכום קבוע לכל תלמידה</option><option value="books">ספרים לפי כיתה (ז, ח, יב 250 · ט, י 350 · יא 450)</option></select></label>
     <label>סכום לתלמידה<input name="amount" inputmode="decimal"></label>
     <label class="chk"><input type="checkbox" name="ok" value="1"> לאשר הוספה לכל התיקים הפעילים</label>
     <button>הוספה</button>
   </form>
   <p class="mu">חיוב שכבר קיים בתיק באותה קטגוריה לא יתווסף שוב. אפשר לבטל חיוב בתוך התיק.</p>
+<?php sec_close(); ?>
+<?php sec_open('cats', 'קטגוריות חיוב', count(charge_cats_custom()) . ' קטגוריות נוספות', '☰', in_array(($_POST['act'] ?? ''), ['cat_add', 'cat_del'], true) ? ['cats'] : []); ?>
+  <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="act" value="cat_add">
+    <label>קטגוריה חדשה<input name="cat" maxlength="40" placeholder="למשל: דמי רישום, ביטוח, מסיבת סיום" required></label>
+    <button>הוספה</button></form>
+  <p class="mu">קטגוריות מובנות: <?= e(implode(', ', array_filter(CHARGE_KINDS, fn($v) => $v !== 'אחר'))) ?>. קטגוריה שתוסיפו כאן תופיע ברשימה של "חיוב לכל התיקים" וברשימת הסוגים של "חיובים נוספים" בכל תיק.</p>
+  <?php if ($ccl = charge_cats_custom()): ?><div class="sc"><table><tr><th>קטגוריה נוספת</th><th></th></tr>
+  <?php foreach ($ccl as $cn): ?><tr><td><?= e($cn) ?></td><td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="cat_del"><input type="hidden" name="cat" value="<?= e($cn) ?>"><button class="sec">הסרה</button></form></td></tr><?php endforeach; ?>
+  </table></div><?php endif; ?>
 <?php sec_close(); ?>
 <?php sec_open('nofile', 'תלמידות בלי תיק גבייה', count($nofile) . ' תלמידות', '☺', isset($_GET['nofile']) || ($_POST['act'] ?? '') === 'create_all' ? ['nofile'] : []); ?>
   <?php if (isset($_GET['nofile'])): ?>

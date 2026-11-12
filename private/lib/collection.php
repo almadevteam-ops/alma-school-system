@@ -4,6 +4,12 @@ declare(strict_types=1);
 const SCHOOL_MONTHS = [1 => 'ספטמבר', 2 => 'אוקטובר', 3 => 'נובמבר', 4 => 'דצמבר', 5 => 'ינואר', 6 => 'פברואר', 7 => 'מרץ', 8 => 'אפריל', 9 => 'מאי', 10 => 'יוני', 11 => 'יולי', 12 => 'אוגוסט'];
 const PAY_METHODS = ['hok_bank' => 'הוראת קבע בנק', 'hok_card' => 'הו״ק אשראי (נדרים פלוס)', 'check' => 'צ׳קים', 'cash' => 'מזומן', 'transfer' => 'העברה', 'payer' => 'גורם משלם (עמותה)', 'other' => 'אחר'];
 const CHARGE_KINDS = ['books' => 'ספרי לימוד', 'tour' => 'סיור', 'activities' => 'חוגים', 'other' => 'אחר'];
+/** קטגוריות חיוב שנוספו ידנית (נשמרות בהגדרות). מופיעות בחיוב לכל התיקים ובחיובים נוספים של כל תיק. */
+function charge_cats_custom(): array {
+  $j = json_decode(setting_get('charge_cats', '[]'), true);
+  return is_array($j) ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $j), fn($x) => $x !== ''))) : [];
+}
+function charge_cats_save(array $l, string $by): void { setting_set('charge_cats', json_encode(array_values($l), JSON_UNESCAPED_UNICODE), $by); }
 const BOOKS_BY_GRADE = ['ז' => 250, 'ח' => 250, 'ט' => 350, 'י' => 350, 'יא' => 450, 'יב' => 250];
 const PAYER_KINDS = ['parents' => 'הורים', 'father' => 'אבא', 'mother' => 'אמא'];
 const COLLECTION_ROLES = ['admin', 'secretary', 'finance'];

@@ -48,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   } elseif ($act === 'add_charge') {
     $amt = money_in((string)($_POST['amount'] ?? '')); $kind = (string)($_POST['kind'] ?? 'other'); $label = mb_substr(trim((string)($_POST['label'] ?? '')), 0, 100);
+    if (strpos($kind, 'c:') === 0 && in_array(substr($kind, 2), charge_cats_custom(), true)) { $custom = substr($kind, 2); $kind = 'other'; if ($label === '') $label = $custom; elseif ($label !== $custom) $label = $custom . ' – ' . $label; }
     if (!isset(CHARGE_KINDS[$kind])) $kind = 'other';
     if ($label === '') $label = CHARGE_KINDS[$kind];
     if ($amt === null || $amt <= 0) $err = 'סכום החיוב לא תקין.';
@@ -239,7 +240,7 @@ page_head($fam['name']);
 <?php sec_close(); ?>
 <?php sec_open('chg', 'חיובים נוספים', 'ספרים, סיור, חוגים · ' . count($charges) . ' חיובים', '＋'); ?>
   <form method="post" class="bar"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="add_charge">
-    <label>סוג<select name="kind"><?php foreach (CHARGE_KINDS as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
+    <label>סוג<select name="kind"><?php foreach (CHARGE_KINDS as $k => $v) echo '<option value="' . $k . '">' . e($v) . '</option>'; if ($cc = charge_cats_custom()) { echo '<optgroup label="קטגוריות נוספות">'; foreach ($cc as $v) echo '<option value="c:' . e($v) . '">' . e($v) . '</option>'; echo '</optgroup>'; } ?></select></label>
     <label>תיאור<input name="label" maxlength="100" placeholder="אופציונלי"></label>
     <label>סכום (₪)<input name="amount" inputmode="decimal" required></label>
     <button>הוספת חיוב</button></form>
