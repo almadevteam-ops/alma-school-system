@@ -632,3 +632,18 @@
   }
   document.querySelectorAll('.spbox').forEach(spInitBox);
 })();
+
+/* תפריטי הניווט (ניהול / תחזוקה): פתיחת אחד סוגרת את האחר; לחיצה מחוץ לתפריט או Escape סוגרות */
+(function () {
+  var menus = function () { return document.querySelectorAll('header.top details.menu'); };
+  document.addEventListener('toggle', function (e) {
+    var t = e.target; if (!t || !t.classList || !t.classList.contains('menu') || !t.open) return;
+    menus().forEach(function (m) { if (m !== t) m.open = false; });
+  }, true);
+  document.addEventListener('click', function (e) {
+    menus().forEach(function (m) { if (m.open && !m.contains(e.target)) m.open = false; });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') menus().forEach(function (m) { m.open = false; });
+  });
+})();

@@ -11,7 +11,8 @@ main() {
   mkdir -p "$PRIV"
   exec 9>"$H/.autodeploy.lock"; flock -n 9 || return 0          # ריצה אחת בכל רגע
   [ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" -gt 1048576 ] && tail -n 300 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
-  fail() { echo "$(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$LOG" > "$PRIV/deploy_error.txt"; }
+  notify() { [ -f "$PRIV/cron/deploy_notify.php" ] && php "$PRIV/cron/deploy_notify.php" "$@" >>"$LOG" 2>&1; return 0; }   # מייל על פריסה; כשל במייל לא פוגע בפריסה
+  fail() { echo "$(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "$LOG" > "$PRIV/deploy_error.txt"; notify fail "$1"; }
   cd "$REPO" || { fail "תיקיית המאגר לא נמצאה: $REPO"; return 1; }
   git fetch --quiet origin "$BRANCH" >>"$LOG" 2>&1 || { fail "git fetch נכשל (רשת או הרשאות). פרטים ב-autodeploy.log"; return 1; }
   local FULL DONE; FULL="$(git rev-parse FETCH_HEAD)"; DONE="$(cat "$PRIV/autodeploy_done" 2>/dev/null)"
@@ -23,5 +24,6 @@ main() {
   rm -f "$PRIV/deploy_error.txt"; echo "$FULL" > "$PRIV/autodeploy_done"
   echo "$(date '+%Y-%m-%d %H:%M:%S') $NEW $(git log -1 --format=%s)" > "$PRIV/last_autodeploy.txt"
   echo "$(date '+%Y-%m-%d %H:%M:%S') הסתיים בהצלחה" >>"$LOG"
+  notify ok "$NEW" "$(git log -1 --format=%s)"
 }
 main "$@"; exit $?
