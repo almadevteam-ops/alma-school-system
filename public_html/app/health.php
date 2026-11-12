@@ -9,9 +9,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'testmail
   else { $mailOk = send_mail($to, 'בדיקת מייל ממערכת עלמא', "זהו מייל בדיקה ממערכת עלמא.\nאם הגעת לכאן, שליחת הקודים תעבוד.\nנשלח מ: " . (string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'))); audit('mail_test', 'system', '', mfa_mask($to)); $mailMsg = $mailOk ? 'המייל נמסר לשרת הדואר. בדקי את התיבה וגם את הספאם (יכול לקחת דקה).' : 'השליחה נכשלה: ' . mail_last_error(); }
 }
 $checks = [];
+$checks['גרסת המערכת'] = [is_file(PRIV . '/VERSION') ? trim((string)file_get_contents(PRIV . '/VERSION')) : 'לא ידועה', true];
 $checks['גרסת PHP'] = [PHP_VERSION, version_compare(PHP_VERSION, '8.1.0', '>=')];
 foreach (['pdo_mysql', 'mbstring', 'openssl', 'fileinfo'] as $x) $checks['תוסף ' . $x] = [extension_loaded($x) ? 'קיים' : 'חסר', extension_loaded($x)];
-$checks['גרסת המערכת'] = [is_file(PRIV . '/VERSION') ? trim((string)file_get_contents(PRIV . '/VERSION')) : 'לא ידועה', true];
 $checks['הצפנת AES-256-GCM זמינה'] = [in_array('aes-256-gcm', openssl_get_cipher_methods(), true) ? 'כן' : 'לא', in_array('aes-256-gcm', openssl_get_cipher_methods(), true)];
 $checks['מפתח הצפנה (private/app.key) קיים'] = [is_file(PRIV . '/app.key') ? 'כן – חובה לגבות אותו!' : 'עדיין לא נוצר (ייווצר בהעלאת הקובץ הראשון)', true];
 $checks['עדכוני מסד נתונים'] = [migrations_pending() ? 'ממתינים – יש להריץ בדף עדכון' : 'מעודכן', !migrations_pending()];
@@ -33,7 +33,7 @@ page_head('בדיקת מערכת');
 ?>
 <h1>בדיקת מערכת</h1>
 <div class="card"><table>
-<?php foreach ($checks as $k => [$v, $ok]) echo '<tr><td>' . e($k) . '</td><td>' . e($v) . '</td><td class="' . ($ok ? 'ok' : 'er') . '">' . ($ok ? '✓ תקין' : '✗ לטיפול') . '</td></tr>'; ?>
+<?php foreach ($checks as $k => [$v, $ok]) echo '<tr' . ($k === 'גרסת המערכת' ? ' class="vrow"' : '') . '><td>' . e($k) . '</td><td>' . e($v) . '</td><td class="' . ($ok ? 'ok' : 'er') . '">' . ($ok ? '✓ תקין' : '✗ לטיפול') . '</td></tr>'; ?>
 </table></div>
 <div class="card">
   <h2>בדיקת שליחת מייל (לקודי כניסה)</h2>

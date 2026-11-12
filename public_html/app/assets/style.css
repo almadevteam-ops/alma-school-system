@@ -264,3 +264,5 @@ tr.pendrow td { vertical-align: top; }
 .algbox{border:1px solid var(--ln);border-radius:12px;padding:10px 14px;background:#fbf9fb}
 .algopts{margin-top:8px;padding-top:8px;border-top:1px dashed var(--ln)}.algopts[hidden]{display:none}
 .algl{display:flex;flex-wrap:wrap;gap:6px 18px;margin:6px 0 8px}.algopts input[name=allergy_other]{max-width:320px}
+
+.vrow td{font-weight:700;font-size:1.2em;padding-top:.7em;padding-bottom:.7em;background:#f6eef4}
