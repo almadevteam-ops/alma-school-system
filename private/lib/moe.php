@@ -9,7 +9,7 @@ const MOE_FIELDS = [
   'm_name' => 'שם האם', 'm_phone' => 'טלפון אם', 'm_id' => 'ת.ז אם', 'home_phone' => 'טלפון בית', 'hmo' => 'קופת חולים',
 ];
 /** שדות שמותר לעדכן בתלמידה קיימת (השם והכיתה אינם מתעדכנים מכאן). */
-const MOE_SYNC = ['idn', 'dob', 'addr', 'city', 'phone', 'email', 'f_name', 'f_phone', 'f_id', 'm_name', 'm_phone', 'm_id', 'home_phone', 'hmo'];
+const MOE_SYNC = ['idn', 'dob', 'addr', 'city', 'phone', 'email', 'f_name', 'f_phone', 'f_id', 'm_name', 'm_phone', 'm_id', 'hmo'];
 const MOE_AUTO = [
   ['f_id', '/(זהות|ת\.?\s?ז).*אב|אב.*(זהות|ת\.?\s?ז)/u'], ['m_id', '/(זהות|ת\.?\s?ז).*אם|אם.*(זהות|ת\.?\s?ז)/u'],
   ['f_phone', '/(טלפון|נייד|פלאפון).*אב|אב.*(טלפון|נייד)/u'], ['m_phone', '/(טלפון|נייד|פלאפון).*אם|אם.*(טלפון|נייד)/u'],

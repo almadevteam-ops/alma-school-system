@@ -92,7 +92,7 @@
     i.addEventListener('input', function () { var v = i.value.replace(/\D/g, '').slice(0, 9); if (v !== i.value) i.value = v; });
     bind(i, function (v) { return idOk(v) ? '' : 'יש להקליד מספר זהות תקין'; });
   });
-  ['phone', 'f_phone', 'm_phone', 'home_phone'].forEach(function (n) { bind(document.querySelector('input[name=' + n + ']'), function (v) { return phoneOk(v) ? '' : 'יש להקליד מספר טלפון תקין (למשל 050-1234567)'; }); });
+  ['phone', 'f_phone', 'm_phone'].forEach(function (n) { bind(document.querySelector('input[name=' + n + ']'), function (v) { return phoneOk(v) ? '' : 'יש להקליד מספר טלפון תקין (למשל 050-1234567)'; }); });
   bind(document.querySelector('input[name=email]'), function (v) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? '' : 'יש להקליד כתובת מייל תקינה'; });
   bind(document.querySelector('input[name=house_no]'), function (v) { return /^\d{1,4}\s?[א-תA-Za-z]?(\s?[\/\-]\s?\d{1,4})?$/.test(v) ? '' : 'מספר בית לא תקין (למשל 12 או 12א)'; });
   document.querySelectorAll('form.dirty [required]').forEach(function (el) { bind(el, null, true); });

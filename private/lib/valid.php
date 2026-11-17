@@ -3,6 +3,14 @@ declare(strict_types=1);
 // ולידציות ונירמול: טלפון ישראלי, תעודת זהות, קופת חולים.
 const HMO_LIST = ['מאוחדת', 'לאומית', 'כללית', 'מכבי'];
 const HMO_UNKNOWN = 'לא ידוע';
+/** מצב הורים: מפתח => תווית. 'undisclosed' = "מעדיפה לא לומר כרגע". */
+const MARITAL = ['married' => 'נשואים', 'divorced' => 'גרושים', 'undisclosed' => 'מעדיפה לא לומר כרגע'];
+function marital_label(string $v): string { return MARITAL[$v] ?? MARITAL['married']; }
+/** האם עמודה קיימת בטבלת התלמידות (מגן על הקוד בחלון שבין פריסה לעדכון מסד הנתונים). */
+function students_has_col(string $c): bool {
+  static $have = null; if ($have === null) { try { $have = array_column(db()->query('SHOW COLUMNS FROM students')->fetchAll(), 'Field'); } catch (Throwable $t) { $have = []; } }
+  return in_array($c, $have, true);
+}
 
 /** מנרמל טלפון ל-ספרות בלבד עם 0 בהתחלה (חסר 0 מהאקסל, +972, מקפים ורווחים). אם אי אפשר – מחזיר את המקור כמות שהוא. */
 function norm_phone(string $v): string {

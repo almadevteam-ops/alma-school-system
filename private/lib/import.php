@@ -123,7 +123,7 @@ function import_parse(string $raw, array $existing): array {
     elseif (str_starts_with($st, 'ממתינ') || $st === 'pending') $d['status'] = 'pending';
     elseif (str_starts_with($st, 'פעיל') || $st === 'active') $d['status'] = 'active';
     else { $warns[] = 'סטטוס לא מוכר – נקבע פעילה'; $d['status'] = 'active'; }
-    $d['marital'] = (str_contains($d['marital'], 'גרוש') || $d['marital'] === 'divorced') ? 'divorced' : 'married';
+    $d['marital'] = (str_contains($d['marital'], 'גרוש') || $d['marital'] === 'divorced') ? 'divorced' : (str_contains($d['marital'], 'מעדיפ') || $d['marital'] === 'undisclosed' ? 'undisclosed' : 'married');
     $dup = '';
     $ng = mb_strtolower($d['name']) . '|' . $d['grade'];
     if ($d['idn'] !== '' && (isset($byId[$d['idn']]))) $dup = 'כבר קיימת במערכת (לפי ת״ז)';

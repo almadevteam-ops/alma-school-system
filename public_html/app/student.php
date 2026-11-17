@@ -9,12 +9,13 @@ $F = [
   'email' => ['אימייל', 150, 0], 'phone' => ['טלפון התלמידה', 30, 0],
   'f_name' => ['שם האב', 80, 0], 'f_phone' => ['טלפון האב', 30, 0], 'f_id' => ['ת״ז האב', 9, 1],
   'm_name' => ['שם האם', 80, 0], 'm_phone' => ['טלפון האם', 30, 0], 'm_id' => ['ת״ז האם', 9, 1],
-  'hmo' => ['קופת חולים', 30, 0], 'home_phone' => ['טלפון בית', 30, 0], 'books' => ['ספרים והשאלות', 255, 0],
+  'hmo' => ['קופת חולים', 30, 0], 'doctor' => ['שם הרופא המטפל', 100, 0],
 ];
+if (!students_has_col('doctor')) unset($F['doctor']);   // עד עדכון מסד הנתונים
 const ID_FIELDS = ['idn', 'f_id', 'm_id'];
-const PHONE_FIELDS = ['phone', 'f_phone', 'm_phone', 'home_phone'];
+const PHONE_FIELDS = ['phone', 'f_phone', 'm_phone'];
 /** שדות שרק מנהלת מערכת יכולה לערוך בכרטיס של תלמידה קיימת. */
-const REQUIRED = ['name', 'grade', 'idn', 'dob', 'city', 'addr'];   // שם וכיתה תמיד; השאר חובה ביצירה, ובעריכה רק אם כבר מולאו (נתונים ישנים לא חוסמים שמירה)
+const REQUIRED = ['name', 'grade', 'idn', 'dob', 'city', 'addr', 'f_name', 'f_phone', 'f_id', 'm_name', 'm_phone', 'm_id', 'hmo'];   // שם וכיתה תמיד; השאר חובה ביצירה, ובעריכה רק אם כבר מולאו (נתונים ישנים לא חוסמים שמירה)
 const ADMIN_ONLY = ['name', 'idn', 'f_name', 'm_name', 'f_id', 'm_id'];
 $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $err = ''; $msg = ''; $badf = [];
@@ -61,7 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $oldStatus = $row['status'] ?? 'active';
   $d['status'] = ($isAdmin && isset(STATUS[$_POST['status'] ?? ''])) ? $_POST['status'] : $oldStatus;
   $statusNote = mb_substr(trim((string)($_POST['status_note'] ?? '')), 0, NOTE_MAX_LEN);
-  $d['marital'] = ($_POST['marital'] ?? '') === 'divorced' ? 'divorced' : 'married';
+  $mIn = (string)($_POST['marital'] ?? '');
+  $d['marital'] = isset(MARITAL[$mIn]) ? $mIn : ($row ? (string)$row['marital'] : '');   // בתלמידה חדשה חובה לבחור
   $d['allergy'] = !empty($_POST['allergy']) ? 1 : 0;
   $al = array_values(array_intersect(ALLERGY_OPTS, (array)($_POST['allergy_list'] ?? [])));
   $d['allergy_list'] = $d['allergy'] ? implode(',', $al) : '';
@@ -83,14 +85,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!$d['disc_on']) $d['disc_status'] = 'approved';
   $chg = fn(string $k) => !$row || (string)$row[$k] !== (string)$d[$k];   // בדיקות תקינות רק על מה ששונה (נתונים ישנים לא חוסמים שמירה)
   foreach (REQUIRED as $k) {
-    if ($k === 'idn' && !can_see_ids()) continue;
+    if (in_array($k, ID_FIELDS, true) && !can_see_ids()) continue;
     if ($k === 'addr' && geo_is_exception($d['city'])) continue;   // "דירה בנשר" וכד': אין רחוב
-    $must = !$id || in_array($k, ['name', 'grade'], true) || (string)($row[$k] ?? '') !== '';
-    $filled = $k === 'grade' ? in_array($d['grade'], GRADES, true) : trim((string)$d[$k]) !== '';
+    $curv = ($k === 'hmo' && ($row['hmo'] ?? '') === HMO_UNKNOWN) ? '' : (string)($row[$k] ?? '');
+    $must = !$id || in_array($k, ['name', 'grade'], true) || $curv !== '';
+    $filled = $k === 'grade' ? in_array($d['grade'], GRADES, true) : ($k === 'hmo' ? in_array($d['hmo'], HMO_LIST, true) : trim((string)$d[$k]) !== '');
     if ($must && !$filled) $badf[] = $k;
   }
   $dup = false;
   if (!$id && $d['idn'] !== '') { $q = db()->prepare('SELECT name FROM students WHERE idn = ? LIMIT 1'); $q->execute([$d['idn']]); $dup = $q->fetchColumn(); }
+  if (!$id && !isset(MARITAL[$d['marital']])) { $badf[] = 'marital'; }
   if ($badf) $err = 'יש למלא את השדות המסומנים באדום.';
   elseif (!$id && can_see_ids() && (!preg_match('/^\d{9}$/', $d['idn']) || !valid_il_id($d['idn']))) { $badf[] = 'idn'; $err = 'תעודת זהות: יש להקליד מספר זהות תקין.'; }
   elseif ($dup !== false) { $badf[] = 'idn'; $err = 'כבר קיימת תלמידה עם מספר הזהות הזה (' . $dup . ').'; }
@@ -169,7 +173,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     if ($sens && !can_see_ids()) continue;
     $lock = $ro || ($id && !$isAdmin && in_array($k, ADMIN_ONLY, true));
     $dis = $lock ? ' disabled' : '';
-    $isReq = in_array($k, ['name', 'grade'], true) || (in_array($k, REQUIRED, true) && (!$id || (string)($row[$k] ?? '') !== '')); $req = $isReq && !$lock; $star = $isReq ? ' <span class="req">*</span>' : '';
+    $curv = ($k === 'hmo' && ($row['hmo'] ?? '') === HMO_UNKNOWN) ? '' : (string)($row[$k] ?? ''); $isReq = in_array($k, ['name', 'grade'], true) || (in_array($k, REQUIRED, true) && (!$id || $curv !== '')); $req = $isReq && !$lock; $star = $isReq ? ' <span class="req">*</span>' : '';
     $bc = in_array($k, $badf, true) ? ' class="bad"' : '';
     $reqa = $req ? ' required' : '';
     if ($k === 'grade') {
@@ -183,9 +187,9 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
       echo '</select></label>'; continue;
     }
     if ($k === 'hmo') {
-      $cur = (string)($val('hmo') ?: HMO_UNKNOWN);
-      $opts = [...HMO_LIST, HMO_UNKNOWN]; if (!in_array($cur, $opts, true)) $opts[] = $cur;
-      echo '<label>' . e($lbl) . '<select name="hmo"' . ($ro ? ' disabled' : '') . '>';
+      $cur = (string)$val('hmo'); $opts = [...HMO_LIST]; if ($cur !== '' && !in_array($cur, $opts, true)) $opts[] = $cur;
+      if ($isReq) $opts = array_values(array_filter($opts, fn($x) => $x !== HMO_UNKNOWN));
+      echo '<label><span>' . e($lbl) . $star . '</span><select name="hmo"' . $bc . ($ro ? ' disabled' : '') . $reqa . '><option value="">' . ($isReq ? 'בחרי קופת חולים' : HMO_UNKNOWN) . '</option>';
       foreach ($opts as $x) echo '<option' . ($cur === $x ? ' selected' : '') . '>' . e($x) . '</option>';
       echo '</select></label>'; continue;
     }
@@ -203,7 +207,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     elseif ($k === 'house_no') $attr = ($geo ? ' data-geo="house"' : '') . ' placeholder="למשל 12 או 12א" dir="ltr"';
     echo '<label><span>' . e($lbl) . $star . '</span><input name="' . $k . '" maxlength="' . ($max > 9 && in_array($k, ID_FIELDS, true) ? 9 : $max) . '" value="' . e($v) . '"' . $attr . $bc . $dis . $reqa . '></label>';
   endforeach; ?>
-  <label>מצב הורים<select name="marital"<?= $ro ? ' disabled' : '' ?>><option value="married">נשואים</option><option value="divorced"<?= $val('marital') === 'divorced' ? ' selected' : '' ?>>גרושים</option></select></label>
+  <label><span>מצב הורים<?= $id ? '' : ' <span class="req">*</span>' ?></span><select name="marital"<?= in_array('marital', $badf, true) ? ' class="bad"' : '' ?><?= $ro ? ' disabled' : '' ?><?= $id ? '' : ' required' ?>><?php if (!$id): ?><option value="">בחרי</option><?php endif; foreach (MARITAL as $mk => $ml) echo '<option value="' . $mk . '"' . ((string)$val('marital') === $mk ? ' selected' : '') . '>' . e($ml) . '</option>'; ?></select></label>
   <label class="chk"><input type="checkbox" name="is_apt" value="1"<?= $val('is_apt') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> גרה בדירה (שכר הלימוד משולם ע"י מורשת גד)</label>
   <label class="chk"><input type="checkbox" name="vaada" value="1" data-tg="vaada"<?= $val('vaada') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> עברה ועדה</label>
   <label class="wide" data-g="vaada"<?= $val('vaada') ? '' : ' hidden' ?>>פירוט הוועדה (תאריך / החלטה)<input name="vaada_note" maxlength="255" value="<?= e((string)$val('vaada_note')) ?>"<?= $ro ? ' disabled' : '' ?>></label>

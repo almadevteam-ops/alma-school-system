@@ -11,10 +11,10 @@ function csv_out(string $file, array $head, array $rows): void {
 $ST = ['paid' => 'שולם', 'part' => 'חלקי', 'none' => 'לא שולם', 'na' => '–', 'wip' => 'בטיפול', 'ref' => 'החזר', 'fut' => 'עתידי'];
 function exp_students(bool $ids): array {
   $S = db()->query("SELECT * FROM students WHERE archived_at IS NULL AND status <> 'pending' ORDER BY FIELD(grade,'ז','ח','ט','י','יא','יב'), cls, name")->fetchAll(); $st = ['active' => 'פעילה', 'left' => 'עזבה'];
-  $head = ['שם', 'כיתה', 'סטטוס', 'שם אב', 'טלפון אב', 'שם אם', 'טלפון אם', 'טלפון תלמידה', 'טלפון בית', 'כתובת', 'עיר', 'אימייל', 'קופת חולים', 'מצב הורים', 'בדירה', 'ועדה', '07', 'רגישות', 'הנחה (₪)', 'ספרים'];
+  $head = ['שם', 'כיתה', 'סטטוס', 'שם אב', 'טלפון אב', 'שם אם', 'טלפון אם', 'טלפון תלמידה', 'כתובת', 'עיר', 'אימייל', 'קופת חולים', 'מצב הורים', 'בדירה', 'ועדה', '07', 'רגישות', 'הנחה (₪)'];
   if ($ids) array_splice($head, 2, 0, ['ת.ז', 'תאריך לידה']);
   $rows = [];
-  foreach ($S as $s) { $r = [$s['name'], class_label((string)$s['grade'], (string)$s['cls']), $st[$s['status']] ?? $s['status'], $s['f_name'], $s['f_phone'], $s['m_name'], $s['m_phone'], $s['phone'], $s['home_phone'], trim($s['addr'] . ' ' . $s['house_no']), $s['city'], $s['email'], $s['hmo'], $s['marital'] === 'divorced' ? 'גרושים' : 'נשואים', $s['is_apt'] ? 'כן' : '', $s['vaada'] ? 'כן' : '', $s['s07'] ? 'כן' : '', $s['allergy'] ? trim($s['allergy_list'] . ' ' . $s['allergy_other']) : '', $s['disc_on'] ? $s['disc_amt'] : '', $s['books']];
+  foreach ($S as $s) { $r = [$s['name'], class_label((string)$s['grade'], (string)$s['cls']), $st[$s['status']] ?? $s['status'], $s['f_name'], $s['f_phone'], $s['m_name'], $s['m_phone'], $s['phone'], trim($s['addr'] . ' ' . $s['house_no']), $s['city'], $s['email'], $s['hmo'], marital_label((string)$s['marital']), $s['is_apt'] ? 'כן' : '', $s['vaada'] ? 'כן' : '', $s['s07'] ? 'כן' : '', $s['allergy'] ? trim($s['allergy_list'] . ' ' . $s['allergy_other']) : '', $s['disc_on'] ? $s['disc_amt'] : ''];
     if ($ids) array_splice($r, 2, 0, [$s['idn'], $s['dob']]); $rows[] = $r; }
   return [$head, $rows];
 }
