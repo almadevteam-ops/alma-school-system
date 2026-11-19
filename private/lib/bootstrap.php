@@ -53,6 +53,7 @@ require_once __DIR__ . '/mfa_email.php';
 require_once __DIR__ . '/backup.php';
 require_once __DIR__ . '/backup_delta.php';
 require_once __DIR__ . '/budget.php';
+require_once __DIR__ . '/charge_import.php';
 
 // ---- HTTPS ----
 if (PHP_SAPI !== 'cli' && cfg('force_https', true) && !is_https()) {
