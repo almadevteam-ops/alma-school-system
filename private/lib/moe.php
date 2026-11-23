@@ -45,6 +45,22 @@ function moe_auto(array $hd): array {
 function moe_tk(string $s): array { return array_values(array_filter(preg_split('/\s+/u', trim(preg_replace('/[^א-ת ]/u', '', $s) ?? '')) ?: [], fn($x) => $x !== '')); }
 function moe_same_name(string $a, string $b): bool { $t = moe_tk($a); $n = moe_tk($b); return $t && !array_diff($t, $n); }
 
+/** כיתה/שכבה מטקסט חופשי ("ז'", "כיתה י'1", "י"א 2", "8"): [שכבה, כיתה] או ['', '']. */
+function moe_grade_parse(string $raw): array {
+  $gr = preg_replace('/["\'׳״\s]/u', '', preg_replace('/כיתה|שכבה|שכבת/u', '', $raw) ?? '') ?? '';
+  if (preg_match('/^(יא|יב|י|ח|ט|ז)\D*(\d)?$/u', $gr, $m)) return [$m[1], cls_norm($m[1], (string)($m[2] ?? ''))];
+  if (preg_match('/^(7|8|9|10|11|12)$/', $gr)) return [import_grade($gr), ''];
+  return ['', ''];
+}
+/** שורת כותרת קטע במצבת ("כיתה ז'"): אם באחד התאים כתוב "כיתה/שכבה X" עם כיתה מוכרת, מחזירה [שכבה, כיתה]. */
+function moe_section(array $cells): ?array {
+  foreach ($cells as $v) {
+    $t = trim((string)$v);
+    if ($t !== '' && mb_strlen($t) <= 20 && preg_match('/^(כיתה|שכבה|שכבת)\s*\S/u', $t)) { $g = moe_grade_parse($t); if ($g[0] !== '') return $g; }
+  }
+  return null;
+}
+
 /** ערך מנורמל לפי סוג השדה. */
 function moe_norm(string $k, string $v): string {
   $v = trim($v);
@@ -61,16 +77,17 @@ function moe_norm(string $k, string $v): string {
 /** מחשב את שלוש הרשימות: רק במשרד / בשני הצדדים (עם הבדלים) / רק אצלנו. */
 function moe_compute(array $rows, int $hi, array $map): array {
   $inv = []; foreach ($map as $i => $k) if ($k !== '') $inv[$k] = (int)$i;
-  $M = [];
+  $M = []; $cur = null; $fromSec = 0;
   foreach (array_slice($rows, $hi + 1) as $c) {
     $g = fn(string $k) => isset($inv[$k]) ? trim((string)($c[$inv[$k]] ?? '')) : '';
     $x = [];
     foreach (MOE_FIELDS as $k => $_) if (!in_array($k, ['name', 'first', 'last', 'grade'], true)) $x[$k] = moe_norm($k, $g($k));
     $x['nm'] = $g('name') !== '' ? $g('name') : trim($g('last') . ' ' . $g('first'));
-    $gr = preg_replace('/["\'׳״\s]/u', '', preg_replace('/כיתה|שכבה/u', '', $g('grade')) ?? '') ?? '';
-    $x['grade'] = ''; $x['cls'] = '';
-    if (preg_match('/^(יא|יב|י|ח|ט|ז)\D*(\d)?$/u', $gr, $m)) { $x['grade'] = $m[1]; $x['cls'] = cls_norm($m[1], (string)($m[2] ?? '')); }
-    elseif (preg_match('/^(7|8|9|10|11|12)$/', $gr)) { $x['grade'] = import_grade($gr); $x['cls'] = ''; }
+    [$x['grade'], $x['cls']] = moe_grade_parse($g('grade'));
+    // מצבת עם כותרות קטעים ("כיתה ז'", "כיתה י"א 2") במקום עמודת כיתה: שורה כזו לא נחשבת תלמידה, והכיתה עוברת לתלמידות שאחריה.
+    $sec = moe_section($c);
+    if ($sec !== null && $x['idn'] === '' && ($x['nm'] === '' || moe_grade_parse($x['nm'])[0] !== '' || preg_match('/^(כיתה|שכבה|שכבת)(\s|$)/u', $x['nm']))) { $cur = $sec; continue; }
+    if ($x['grade'] === '' && $cur) { $x['grade'] = $cur[0]; $x['cls'] = $cur[1]; $fromSec++; }
     if ($x['nm'] !== '' || $x['idn'] !== '') $M[] = $x;
   }
   $S = db()->query('SELECT id, name, idn, status, archived_at, ' . implode(', ', MOE_SYNC) . ' FROM students')->fetchAll();
@@ -89,7 +106,7 @@ function moe_compute(array $rows, int $hi, array $map): array {
   foreach ($M as $i => $x) { $s = $find($x); if (!$s) { $only[] = $i; continue; } $both[] = [(int)$s['id'], $i]; $seen[(int)$s['id']] = 1; }
   $miss = [];
   foreach ($S as $s) if ($s['status'] === 'active' && $s['archived_at'] === null && !isset($seen[(int)$s['id']])) $miss[] = (int)$s['id'];
-  return ['M' => $M, 'only' => $only, 'both' => $both, 'miss' => $miss, 'S' => array_column($S, null, 'id')];
+  return ['M' => $M, 'fromSec' => $fromSec, 'only' => $only, 'both' => $both, 'miss' => $miss, 'S' => array_column($S, null, 'id')];
 }
 /** הבדלים בין תלמידה קיימת לרשומה ממשרד החינוך, לפי מצב: fill = רק שדות ריקים; over = גם החלפה. */
 function moe_diffs(array $s, array $x, string $mode): array {

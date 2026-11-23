@@ -100,6 +100,7 @@ page_head('סנכרון משרד החינוך');
 <p><button name="act" value="remap" class="sec">חישוב מחדש לפי ההתאמה</button></p>
 <?php sec_close(); ?>
 <div class="cards"><div class="card">במשרד ולא במצבת שלנו<b><?= count($R['only']) ?></b></div><div class="card">אצלנו ולא במשרד<b><?= count($R['miss']) ?></b></div><div class="card">תואמות<b><?= count($R['both']) ?></b></div><div class="card">עם הבדלים בנתונים<b><?= $nd ?></b></div></div>
+<?php if ($R['fromSec'] > 0): ?><p class="ok">הכיתה זוהתה לפי כותרות הקטעים בקובץ (למשל "כיתה ז'") עבור <?= (int)$R['fromSec'] ?> תלמידות, כי אין בקובץ עמודת כיתה.</p><?php endif; ?>
 <h2>עדכון תלמידות קיימות</h2>
 <div class="bar"><label class="chk"><input type="radio" name="mode" value="fill"<?= $mode === 'fill' ? ' checked' : '' ?>> השלמת שדות ריקים בלבד</label><label class="chk"><input type="radio" name="mode" value="over"<?= $mode === 'over' ? ' checked' : '' ?>> החלפת ערכים קיימים בערכי המשרד</label><label class="chk"><input type="checkbox" name="upd" value="1" checked> לבצע עדכון</label><button name="act" value="remap" class="sec">רענון תצוגה</button></div>
 <div class="sc"><table><tr><th>תלמידה</th><th>שדה</th><th>אצלנו</th><th>במשרד</th></tr>
@@ -109,7 +110,7 @@ page_head('סנכרון משרד החינוך');
 <div class="bar"><button type="button" class="sec" data-chk="mc" data-on="1">סימון הכול</button><button type="button" class="sec" data-chk="mc" data-on="0">ביטול סימון</button></div>
 <div class="sc"><table><tr><th></th><th>שם</th><th>ת.ז</th><th>כיתה</th><th>לידה</th><th>עיר</th><th>טלפון</th><th>אב</th><th>אם</th></tr>
 <?php foreach ($R['only'] as $mi) { $x = $M[$mi]; $ok = in_array($x['grade'], GRADES, true) && ($x['idn'] === '' || valid_il_id($x['idn']));
-  echo '<tr><td><input type="checkbox" class="mc" name="add[]" value="' . $mi . '" aria-label="הוספה"' . ($ok ? ' checked' : '') . '></td><td>' . e($x['nm']) . '</td><td><bdi dir="ltr">' . e($x['idn']) . '</bdi></td><td>' . e($x['cls'] ?: '?') . '</td><td>' . e($x['dob']) . '</td><td>' . e($x['city']) . '</td><td><bdi dir="ltr">' . e($x['phone']) . '</bdi></td><td>' . e($x['f_name']) . '</td><td>' . e($x['m_name']) . '</td></tr>'; }
+  echo '<tr><td><input type="checkbox" class="mc" name="add[]" value="' . $mi . '" aria-label="הוספה"' . ($ok ? ' checked' : '') . '></td><td>' . e($x['nm']) . '</td><td><bdi dir="ltr">' . e($x['idn']) . '</bdi></td><td>' . e($x['cls'] ?: ($x['grade'] ?: '?')) . '</td><td>' . e($x['dob']) . '</td><td>' . e($x['city']) . '</td><td><bdi dir="ltr">' . e($x['phone']) . '</bdi></td><td>' . e($x['f_name']) . '</td><td>' . e($x['m_name']) . '</td></tr>'; }
   if (!$R['only']) echo '<tr><td colspan="9" class="mu">הכול תואם.</td></tr>'; ?></table></div>
 <p class="mu">תלמידות חדשות נוספות כפעילות, בלי תיק גבייה — יש לשייך אותן למשפחה בכרטיס התלמידה. שורות עם כיתה או ת.ז לא תקינה מסומנות כברירת מחדל כלא נבחרות ואם סומנו ידנית יידלגו.</p>
 <h2>במערכת ולא במשרד החינוך</h2>
