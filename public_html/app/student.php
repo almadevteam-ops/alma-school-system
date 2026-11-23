@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $act = (string)($_POST['act'] ?? 'save');
   if ($act === 'archive') {
-    require_role(['admin']);
+    require_role(['admin', 'secretary']);
     if (!$row || empty($_POST['ok'])) fail_page(400, 'נדרש אישור להעברה לארכיון.');
     $who = mb_substr((string)($u['name'] ?: $u['username']), 0, 100);
     db()->prepare('UPDATE students SET archived_at = ?, archived_by = ? WHERE id = ?')->execute([now(), $who, $id]);
@@ -340,11 +340,11 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   </div>
 <?php sec_close(); ?>
 <?php endif; ?>
-<?php if ($id && $isAdmin): ?>
+<?php if ($id && in_array($u['role'], ['admin', 'secretary'], true) && empty($row['archived_at'])): ?>
 <form method="post" class="card arch">
   <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="archive">
   <h2>העברה לארכיון</h2>
-  <p class="mu">התלמידה תוסר מהרשימות, אבל כל הרשומות המקושרות (חיובים, תשלומים, הערות ומסמכים) נשמרות. אפשר להחזיר אותה מדף הארכיון.</p>
+  <p class="mu">התלמידה תוסר מהרשימות, אבל כל הרשומות המקושרות (חיובים, תשלומים, הערות ומסמכים) נשמרות. <?= $isAdmin ? 'אפשר להחזיר אותה מדף הארכיון.' : 'החזרה מהארכיון נעשית על ידי מנהל המערכת.' ?></p>
   <label><input type="checkbox" name="ok" value="1"> אני מאשרת להעביר את התלמידה לארכיון</label>
   <p><button class="dg" disabled>העברה לארכיון</button></p>
 </form>
