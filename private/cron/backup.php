@@ -9,4 +9,5 @@ $force = in_array('--full', $argv, true) ? 'full' : (in_array('--delta', $argv, 
 [$ok, $lines] = bk_cycle($force);
 foreach ($lines as $l) echo date('Y-m-d H:i:s') . ' ' . $l . "\n";
 if (!$ok) fwrite(STDERR, "ERROR: backup cycle reported a failure\n");
+try { $rn = rem_cycle(); if ($rn) echo date('Y-m-d H:i:s') . " נשלחו $rn תזכורות גבייה\n"; } catch (Throwable $t) { fwrite(STDERR, "reminders: " . $t->getMessage() . "\n"); }
 exit($ok ? 0 : 1);

@@ -22,6 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   } elseif ($act === 'newcodes' && (int)$me['totp_enabled']) {
     $codes = make_recovery_codes($uid);
     audit('2fa_recovery_regenerated', 'user', (string)$uid);
+  } elseif ($act === 'setmail') {
+    $mail = mb_substr(trim((string)($_POST['mail'] ?? '')), 0, 150);
+    if ($mail !== '' && !filter_var($mail, FILTER_VALIDATE_EMAIL)) $err = 'כתובת המייל אינה תקינה.';
+    else { try { db()->prepare('UPDATE users SET email = ? WHERE id = ?')->execute([$mail, $uid]); audit('user_email', 'user', (string)$uid); $msg = 'המייל לתזכורות נשמר.'; } catch (Throwable $t) { $err = 'יש להריץ "עדכון מסד נתונים" ואז לנסות שוב.'; } }
   } elseif ($act === 'chpw') {
     $cur = (string)($_POST['cur'] ?? ''); $n1 = (string)($_POST['n1'] ?? ''); $n2 = (string)($_POST['n2'] ?? '');
     usleep(300000);
@@ -83,6 +87,13 @@ page_head('אבטחה');
 <?php endif; ?>
 
 <?php if ($codes === null): ?>
+<?php $myMail = ''; try { $mq = db()->prepare('SELECT email FROM users WHERE id = ?'); $mq->execute([$uid]); $myMail = (string)$mq->fetchColumn(); } catch (Throwable $t) {} ?>
+<form method="post" class="card"><?= csrf_field() ?><input type="hidden" name="act" value="setmail">
+  <h2>מייל לתזכורות</h2>
+  <p class="mu">תזכורות גבייה שיצרת נשלחות לכתובת הזו.</p>
+  <div class="fg"><label>כתובת מייל<input type="email" name="mail" maxlength="150" value="<?= e($myMail) ?>" dir="ltr" autocomplete="email"></label></div>
+  <p><button>שמירה</button></p>
+</form>
 <form method="post" class="card" autocomplete="off"><?= csrf_field() ?><input type="hidden" name="act" value="chpw">
   <h2>החלפת סיסמה</h2>
   <div class="fg">

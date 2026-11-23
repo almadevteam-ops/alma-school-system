@@ -123,6 +123,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       audit('charge_edit', 'family', (string)$id, "חיוב $cid: $amt, הנחה $da, סימון $mk");
       redirect('family.php?id=' . $id . '&open=chg&m=' . rawurlencode('החיוב עודכן.'));
     }
+  } elseif (in_array($act, ['rem_add', 'rem_off', 'rem_now'], true)) {
+    if (!rem_ready()) redirect('family.php?id=' . $id . '&open=rem&e=' . rawurlencode('יש להריץ "עדכון מסד נתונים" כדי להפעיל תזכורות.'));
+    if ($act === 'rem_add') {
+      $kind = ($_POST['kind'] ?? '') === 'monthly' ? 'monthly' : 'once';
+      $title = mb_substr(trim((string)($_POST['title'] ?? '')), 0, 150); $body = mb_substr(trim((string)($_POST['body'] ?? '')), 0, 3000);
+      $dom = (int)($_POST['dom'] ?? 0); $date = date_in((string)($_POST['date'] ?? '')); $until = trim((string)($_POST['until'] ?? '')) === '' ? null : date_in((string)$_POST['until']);
+      if ($title === '') $err = 'נא למלא כותרת.';
+      elseif ($kind === 'once' && ($date === null || $date < date('Y-m-d'))) $err = 'נא לבחור תאריך להיום או לעתיד.';
+      elseif ($kind === 'monthly' && ($dom < 1 || $dom > 31)) $err = 'נא לבחור יום בחודש (1–31).';
+      elseif ($kind === 'monthly' && trim((string)($_POST['until'] ?? '')) !== '' && $until === null) $err = 'תאריך הסיום לא תקין.';
+      else {
+        $nx = $kind === 'once' ? $date : rem_next_dom($dom, date('Y-m-d'));
+        if ($kind === 'monthly' && $until !== null && $nx > $until) { $err = 'תאריך הסיום מוקדם מהתזכורת הראשונה.'; }
+        else {
+          $pdo->prepare('INSERT INTO reminders (family_id, user_id, kind, day_of_month, next_at, until_at, title, body, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+              ->execute([$id, $u['id'], $kind, $kind === 'monthly' ? $dom : null, $nx, $kind === 'monthly' ? $until : null, $title, $body, now()]);
+          audit('reminder_add', 'family', (string)$id, $title . ' · ' . ($kind === 'monthly' ? "כל חודש ב-$dom" : $date));
+          redirect('family.php?id=' . $id . '&open=rem&m=' . rawurlencode('התזכורת נוצרה. היא תישלח אל ' . (rem_email((int)$u['id']) ?: 'המייל שלך') . ' ב-' . date_out($nx) . '.'));
+        }
+      }
+    } else {
+      $rid = (int)($_POST['rid'] ?? 0); $q = $pdo->prepare('SELECT * FROM reminders WHERE id = ? AND family_id = ?'); $q->execute([$rid, $id]); $rr = $q->fetch();
+      if (!$rr) $err = 'התזכורת לא נמצאה.';
+      elseif ($act === 'rem_off') { $pdo->prepare("UPDATE reminders SET status = 'off', next_at = NULL WHERE id = ?")->execute([$rid]); audit('reminder_off', 'family', (string)$id, (string)$rr['title']); redirect('family.php?id=' . $id . '&open=rem&m=' . rawurlencode('התזכורת בוטלה.')); }
+      else { [$ok, $info] = rem_send($rr); redirect('family.php?id=' . $id . '&open=rem&' . ($ok ? 'm=' . rawurlencode('נשלח מייל בדיקה אל ' . $info . '.') : 'e=' . rawurlencode('השליחה נכשלה: ' . $info))); }
+    }
   } elseif ($act === 'add_student') {
     $sid = (int)($_POST['student_id'] ?? 0);
     $pdo->prepare('UPDATE students SET family_id = ? WHERE id = ? AND family_id IS NULL')->execute([$id, $sid]);
@@ -146,6 +172,7 @@ if (isset($_GET['pv']) && $fam && $_SERVER['REQUEST_METHOD'] === 'GET') {   // �
   foreach (SCHOOL_MONTHS as $m => $nm) { if ($m > $sum['months']) break; $dlt = round((float)$aft['cov'][$m] - (float)$sum['cov'][$m], 2); if ($dlt > 0.004) $rows[] = ['m' => $nm, 'a' => $dlt, 'f' => $m > $sum['cur']]; }
   echo json_encode(['rows' => $rows, 'credit' => $aft['credit'], 'surplus' => round($a - array_sum(array_column($rows, 'a')), 2)], JSON_UNESCAPED_UNICODE); exit;
 }
+rem_lazy();
 $studs = family_students($id);
 $payers = db()->query('SELECT id, name FROM payers ORDER BY name')->fetchAll();
 $divorced = (bool)array_filter($studs, fn($x) => ($x['marital'] ?? '') === 'divorced');
@@ -153,7 +180,7 @@ $ch = db()->prepare('SELECT c.*, (SELECT COALESCE(SUM(p.amount),0) FROM payments
 $py = db()->prepare('SELECT p.*, u.display_name who FROM payments p LEFT JOIN users u ON u.id = p.created_by WHERE p.family_id = ? ORDER BY p.paid_on DESC, p.id DESC'); $py->execute([$id]); $pays = $py->fetchAll();
 $free = db()->query('SELECT id, name, grade FROM students WHERE family_id IS NULL AND status = \'active\' AND archived_at IS NULL ORDER BY name')->fetchAll();
 $chargeNames = array_column($charges, 'label', 'id');
-if ($err && $_SERVER['REQUEST_METHOD'] === 'POST') $_GET['open'] = ['add_payment' => 'pay', 'void_payment' => 'pay', 'save' => 'set', 'add_charge' => 'chg', 'void_charge' => 'chg', 'add_student' => 'stu', 'remove_student' => 'stu', 'charge_edit' => 'chg'][$_POST['act'] ?? ''] ?? 'notes';
+if ($err && $_SERVER['REQUEST_METHOD'] === 'POST') $_GET['open'] = ['add_payment' => 'pay', 'void_payment' => 'pay', 'save' => 'set', 'add_charge' => 'chg', 'void_charge' => 'chg', 'add_student' => 'stu', 'remove_student' => 'stu', 'charge_edit' => 'chg', 'rem_add' => 'rem', 'rem_off' => 'rem', 'rem_now' => 'rem'][$_POST['act'] ?? ''] ?? 'notes';
 page_head($fam['name']);
 ?>
 <div class="sub"><div class="in"><a href="collection.php">‹ חזרה לגבייה</a><b class="nm"><?= e($fam['name']) ?></b><span class="mu">תיק גבייה</span><span class="gap"></span><span class="mu"><?= $sum['balance'] < -0.004 ? 'זכות' : 'חוב' ?></span><b class="bal <?= $sum['balance'] > 0.004 ? 'er' : 'ok' ?>"><?= e(money(abs($sum['balance']))) ?></b><a class="btn" href="family.php?id=<?= $id ?>&amp;open=pay#s-pay">רישום תשלום</a></div></div>
@@ -207,6 +234,33 @@ page_head($fam['name']);
   <?php endforeach; if (!$pays) echo '<tr><td colspan="8" class="mu">עדיין לא נרשמו תשלומים.</td></tr>'; ?>
   </table></div>
 <?php sec_close(); ?>
+<?php $rem = rem_family_rows($id); $remAct = count(array_filter($rem, fn($x) => $x['status'] === 'active')); $remMail = rem_email((int)$u['id']);
+sec_open('rem', 'תזכורות', $remAct ? $remAct . ' פעילות' : 'להזכיר למשפחה או להתקשר', $remAct ? '🔴' : '🔔'); ?>
+<?php if (!rem_ready()): ?><p class="aptn">כדי להפעיל תזכורות יש להריץ "עדכון מסד נתונים" (תחזוקה).</p><?php else: ?>
+<?php foreach ($rem as $r): $act = $r['status'] === 'active'; ?>
+  <div class="rem<?= $act ? '' : ' rd' ?><?= $r['last_err'] !== '' ? ' rx' : '' ?>">
+    <div class="rt"><span class="rb" aria-hidden="true">!!</span><b><?= e($r['title']) ?></b><span class="rw"><?= e(rem_when($r)) ?></span></div>
+    <?php if ($r['body'] !== ''): ?><p class="rbd"><?= nl2br(e($r['body'])) ?></p><?php endif; ?>
+    <div class="rm"><?php if ($act): ?><span>הבאה: <b><?= e(date_out($r['next_at'])) ?></b></span><?php else: ?><span><?= $r['status'] === 'off' ? 'בוטלה' : 'נשלחה' ?></span><?php endif; ?>
+      <span>נוצרה ע"י <?= e((string)$r['who']) ?></span><?php if ($r['sent_count']): ?><span>נשלחה <?= (int)$r['sent_count'] ?> פעמים<?= $r['last_sent_at'] ? ' · לאחרונה ' . e(date_out($r['last_sent_at'])) : '' ?></span><?php endif; ?>
+      <?php if ($r['last_err'] !== ''): ?><span class="er">⚠ לא נשלחה: <?= e($r['last_err']) ?></span><?php endif; ?></div>
+    <?php if ($act): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="rid" value="<?= (int)$r['id'] ?>">
+      <button name="act" value="rem_now" class="sec">שלחי לי בדיקה</button> <button name="act" value="rem_off" class="dg" data-confirm="לבטל את התזכורת?">ביטול</button></form><?php endif; ?>
+  </div>
+<?php endforeach; if (!$rem) echo '<p class="mu">אין תזכורות לתיק הזה.</p>'; ?>
+<form method="post" class="remf"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="rem_add">
+  <h3>תזכורת חדשה</h3>
+  <label>כותרת המייל<input name="title" maxlength="150" value="<?= e('תזכורת גבייה – משפחת ' . $fam['name']) ?>" required></label>
+  <label>תוכן המייל<textarea name="body" rows="4" maxlength="3000"><?= e('להתקשר למשפחה ' . $fam['name'] . ' ולשאול מה עם התשלום.') ?></textarea></label>
+  <fieldset class="rk"><legend>מתי להזכיר?</legend>
+    <label class="opt"><input type="radio" name="kind" value="once" checked> <span>פעם אחת בתאריך</span> <input type="date" name="date" value="<?= e(date('Y-m-d', strtotime('+7 days'))) ?>" min="<?= e(date('Y-m-d')) ?>"></label>
+    <label class="opt"><input type="radio" name="kind" value="monthly"> <span>כל חודש ביום</span> <input type="number" name="dom" min="1" max="31" value="5" class="n3"> <span>עד תאריך (לא חובה)</span> <input type="date" name="until"></label>
+  </fieldset>
+  <?php if ($remMail): ?><p class="mu">התזכורת תישלח למייל שלך: <bdi dir="ltr"><?= e($remMail) ?></bdi>. הכותרת תקבל סימני קריאה אדומים ❗❗ כדי שתבלוט בתיבת הדואר.</p>
+  <?php else: ?><p class="aptn">אין כתובת מייל בחשבון שלך, ולכן התזכורת לא תישלח. אפשר להגדיר אותה ב<a href="security.php">אבטחה</a>.</p><?php endif; ?>
+  <button>יצירת תזכורת</button>
+</form>
+<?php endif; sec_close(); ?>
 <?php sec_open('set', 'הגדרות גבייה', money($fam['monthly']) . ' לחודש · ' . (int)$fam['months'] . ' חודשים · ' . payer_label($fam), '⚙'); ?>
 <form method="post"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="save">
   <div class="fg">
