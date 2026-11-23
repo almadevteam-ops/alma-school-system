@@ -162,9 +162,11 @@ page_head('גביות חד־פעמיות');
   <label>אמצעי תשלום<select name="method"><option value="">לפי אמצעי התשלום של התיק</option><?php foreach (PAY_METHODS as $k => $v) if ($k !== 'payer') echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
   <button>רישום התשלומים שסומנו</button>
 </div>
+<?php $stBy = []; if ($rows) { $in = implode(',', array_map('intval', array_unique(array_column($rows, 'family_id')))); foreach (db()->query("SELECT id, family_id, name FROM students WHERE archived_at IS NULL AND family_id IN ($in) ORDER BY name")->fetchAll() as $sr) $stBy[(int)$sr['family_id']][] = $sr; }
+  $bk = rawurlencode('charges.php?l=' . rawurlencode($sel)); ?>
 <div class="sc"><table><tr><th>משפחה</th><th>תלמידות</th><th>סכום</th><th>הנחה</th><th>שולם</th><th>יתרה</th><th>מצב</th><th>שולם ✓</th><th>סכום ששולם (אם שונה מהיתרה)</th></tr>
 <?php foreach ($rows as $r): $net = (float)$r['amount'] - (float)$r['disc_amt']; $left = max(0, round($net - (float)$r['paid'], 2)); $st = $r['mark'] === 'n' ? 'לא רלוונטי' : ($r['paid'] >= $net - 0.004 ? 'שולם' : ($r['mark'] === 'r' ? 'החזר' : ($r['mark'] === 'w' || $r['paid'] > 0 ? 'בטיפול' : 'לא שולם'))); $cid = (int)$r['id']; ?>
-<tr><td><a href="family.php?id=<?= (int)$r['family_id'] ?>&open=chg"><?= e($r['name']) ?></a></td><td class="mu"><?= e((string)$r['studs']) ?></td><td><?= e(money($r['amount'])) ?></td><td><?= (float)$r['disc_amt'] > 0 ? e(money($r['disc_amt'])) : '' ?></td><td><?= e(money($r['paid'])) ?></td><td><?= $left > 0.004 ? e(money($left)) : '' ?></td><td><?= e($st) ?></td>
+<tr><td><a href="family.php?id=<?= (int)$r['family_id'] ?>&open=chg"><?= e($r['name']) ?></a></td><td class="mu"><?php foreach ($stBy[(int)$r['family_id']] ?? [] as $k => $sr) echo ($k ? ', ' : '') . '<a href="student.php?id=' . (int)$sr['id'] . '&amp;back=' . $bk . '">' . e($sr['name']) . '</a>'; ?></td><td><?= e(money($r['amount'])) ?></td><td><?= (float)$r['disc_amt'] > 0 ? e(money($r['disc_amt'])) : '' ?></td><td><?= e(money($r['paid'])) ?></td><td><?= $left > 0.004 ? e(money($left)) : '' ?></td><td><?= e($st) ?></td>
 <?php if ($r['mark'] === 'n'): ?><td></td><td></td>
 <?php else: ?><td><?php if ($left > 0.004): ?><input type="checkbox" name="pay[<?= $cid ?>]" value="1" aria-label="שולם"><?php else: ?><span class="ok">✓</span><?php endif; ?></td>
 <td><input name="amt[<?= $cid ?>]" inputmode="decimal" size="7" placeholder="<?= $left > 0.004 ? e(rtrim(rtrim(number_format($left, 2, '.', ''), '0'), '.')) : '' ?>" aria-label="סכום ששולם"></td><?php endif; ?></tr>

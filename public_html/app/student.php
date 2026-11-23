@@ -34,7 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     db()->prepare('UPDATE students SET archived_at = ?, archived_by = ? WHERE id = ?')->execute([now(), $who, $id]);
     db()->prepare('INSERT INTO student_notes (student_id, body, author_id, author_name, created_at) VALUES (?,?,?,?,?)')->execute([$id, 'הועברה לארכיון בתאריך ' . date('d/m/Y') . ' ע"י ' . $who, $u['id'], $who, now()]);
     audit('archive', 'student', (string)$id, $row['name']);
-    redirect('students.php');
+    $bk = (string)($_POST['back'] ?? ''); // חזרה לרשימה שממנה הגענו (רק דף פנימי)
+    redirect(preg_match('~^[a-z_]+\.php(\?[A-Za-z0-9%_=&.\-]*)?$~', $bk) ? $bk : 'students.php');
   }
   if ($act === 'sib_add' || $act === 'sib_del') {
     if (!can_edit() || !$row || !can_see_ids()) fail_page(403, 'אין לך הרשאה.');
@@ -342,7 +343,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
 <?php endif; ?>
 <?php if ($id && in_array($u['role'], ['admin', 'secretary'], true) && empty($row['archived_at'])): ?>
 <form method="post" class="card arch">
-  <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="archive">
+  <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>"><input type="hidden" name="act" value="archive"><input type="hidden" name="back" value="<?= e((string)($_GET['back'] ?? '')) ?>">
   <h2>העברה לארכיון</h2>
   <p class="mu">התלמידה תוסר מהרשימות, אבל כל הרשומות המקושרות (חיובים, תשלומים, הערות ומסמכים) נשמרות. <?= $isAdmin ? 'אפשר להחזיר אותה מדף הארכיון.' : 'החזרה מהארכיון נעשית על ידי מנהל המערכת.' ?></p>
   <label><input type="checkbox" name="ok" value="1"> אני מאשרת להעביר את התלמידה לארכיון</label>

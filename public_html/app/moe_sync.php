@@ -7,6 +7,15 @@ function mstaged(string $t): ?string { return preg_match('/^[a-f0-9]{32}$/', $t)
 foreach (glob(PRIV . '/storage/moe_*.bin') ?: [] as $f) if (filemtime($f) < time() - 3600) @unlink($f);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check(); $act = (string)($_POST['act'] ?? '');
+  if (isset($_POST['arch'])) { // העברה לארכיון ישירות מרשימת "במערכת ולא במשרד" – נשארים באותה רשימה
+    $sid = (int)$_POST['arch']; $st = db()->prepare('SELECT name FROM students WHERE id = ? AND archived_at IS NULL'); $st->execute([$sid]); $nm = $st->fetchColumn();
+    if ($nm !== false) {
+      db()->prepare('UPDATE students SET archived_at = ?, archived_by = ? WHERE id = ?')->execute([now(), mb_substr($who, 0, 100), $sid]);
+      db()->prepare('INSERT INTO student_notes (student_id, body, author_id, author_name, created_at) VALUES (?,?,?,?,?)')->execute([$sid, 'הועברה לארכיון בתאריך ' . date('d/m/Y') . ' ע"י ' . $who . ' (סנכרון משרד החינוך)', $u['id'], mb_substr($who, 0, 100), now()]);
+      audit('archive', 'student', (string)$sid, (string)$nm); $msg = 'התלמידה ' . $nm . ' הועברה לארכיון.';
+    }
+    $act = 'remap';
+  }
   if ($act === 'upload') {
     $f = $_FILES['moe'] ?? null;
     if (!$f || ($f['error'] ?? 4) !== UPLOAD_ERR_OK) $err = upload_error_text((int)($f['error'] ?? UPLOAD_ERR_NO_FILE));
@@ -114,8 +123,8 @@ page_head('סנכרון משרד החינוך');
   if (!$R['only']) echo '<tr><td colspan="9" class="mu">הכול תואם.</td></tr>'; ?></table></div>
 <p class="mu">תלמידות חדשות נוספות כפעילות, בלי תיק גבייה — יש לשייך אותן למשפחה בכרטיס התלמידה. שורות עם כיתה או ת.ז לא תקינה מסומנות כברירת מחדל כלא נבחרות ואם סומנו ידנית יידלגו.</p>
 <h2>במערכת ולא במשרד החינוך</h2>
-<div class="sc"><table><tr><th>שם</th><th>כיתה</th><th>ת.ז</th></tr>
-<?php foreach ($R['miss'] as $sid) echo '<tr><td><a href="student.php?id=' . $sid . '">' . e($S[$sid]['name']) . '</a></td><td></td><td><bdi dir="ltr">' . e($S[$sid]['idn']) . '</bdi></td></tr>'; if (!$R['miss']) echo '<tr><td colspan="3" class="mu">הכול תואם.</td></tr>'; ?></table></div>
+<div class="sc"><table><tr><th>שם</th><th>כיתה</th><th>ת.ז</th><th></th></tr>
+<?php foreach ($R['miss'] as $sid) echo '<tr><td><a href="student.php?id=' . $sid . '">' . e($S[$sid]['name']) . '</a></td><td></td><td><bdi dir="ltr">' . e($S[$sid]['idn']) . '</bdi></td><td><button name="arch" value="' . (int)$sid . '" class="dg" data-confirm="להעביר את ' . e($S[$sid]['name']) . ' לארכיון?">העברה לארכיון</button></td></tr>'; if (!$R['miss']) echo '<tr><td colspan="4" class="mu">הכול תואם.</td></tr>'; ?></table></div>
 <p class="bar"><button name="act" value="apply" data-confirm="לבצע את הסנכרון? ניתן לראות כל שינוי בהערות התלמידה וביומן הפעולות.">ביצוע הסנכרון</button><button name="act" value="cancel" class="sec">ביטול</button></p>
 </form>
 <?php endif; page_foot();
