@@ -744,3 +744,6 @@
     }).catch(function (err) { say('קריאת ה-PDF נכשלה: ' + (err && err.message ? err.message : err)); });
   });
 })();
+
+// רישום Service Worker – מאפשר "התקנה" של המערכת כאפליקציה בטלפון
+(function () { if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).catch(function () {}); }); })();
