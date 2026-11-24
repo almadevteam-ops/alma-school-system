@@ -702,7 +702,7 @@
         if (hs.length >= 3 && hs.some(function (p) { return p[1] === 'd'; })) { cols = hs.map(function (p) { return { k: p[1], l: p[0].l, r: p[0].r, seen: 0 }; }); last = null; return; }
         if (!cols) return;
         var f = {}; L.cells.forEach(function (c) { var k = col(cols, c); if (k) f[k.k] = (f[k.k] ? f[k.k] + ' ' : '') + c.s; });
-        var dm = f.d && f.d.match(/(\d{1,2})[\/.](\d{1,2})[\/.](\d{4}|\d{2})/);
+        var dm = f.d && f.d.match(/(\d{1,2})[\/. ](\d{1,2})[\/. ](\d{4}|\d{2})/);
         if (dm) { last = { d: dm[0], n: f.n || '', e: f.e || '', r: f.r || '', a: f.a || '', db: f.db || '', cr: f.cr || '' }; lastY = L.y; recs.push(last); }
         else if (last && lastY - L.y <= 22 && !(f.a || f.db || f.cr)) { ['n', 'e', 'r'].forEach(function (k) { if (f[k]) last[k] = (last[k] ? last[k] + ' ' : '') + f[k]; }); lastY = L.y; }
         else last = null;

@@ -13,6 +13,7 @@ function xlsx_rows(string $path): array {
   if ($tot > 60 * 1024 * 1024) { $z->close(); throw new RuntimeException('קובץ האקסל גדול מדי.'); }
   $ss = [];
   if (($x = $z->getFromName('xl/sharedStrings.xml')) !== false) {
+    $x = preg_replace('~<(/?)x:~', '<$1', $x);   // קבצים עם קידומת מרחב שמות (x:) כמו דוחות כאל
     $sx = @simplexml_load_string($x, 'SimpleXMLElement', LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
     if ($sx) foreach ($sx->si as $si) { $t = ''; if (isset($si->t)) $t = (string)$si->t; else foreach ($si->r as $r) $t .= (string)$r->t; $ss[] = $t; }
   }
@@ -20,6 +21,7 @@ function xlsx_rows(string $path): array {
   if ($z->locateName($sheet) === false) { for ($i = 0; $i < $z->numFiles; $i++) { $n = (string)$z->getNameIndex($i); if (preg_match('~^xl/worksheets/[^/]+\.xml$~', $n)) { $sheet = $n; break; } } }
   $x = $z->getFromName($sheet); $z->close();
   if ($x === false) throw new RuntimeException('לא נמצא גיליון בקובץ.');
+  $x = preg_replace('~<(/?)x:~', '<$1', $x);
   $sx = @simplexml_load_string($x, 'SimpleXMLElement', LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
   if (!$sx) throw new RuntimeException('קובץ האקסל לא ניתן לקריאה.');
   $rows = [];
