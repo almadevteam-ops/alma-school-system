@@ -46,18 +46,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ids = array_values(array_unique(array_map('intval', (array)($_POST['ids'] ?? [])))); $cat = (array)($_POST['cat'] ?? []); $inv = (array)($_POST['inv'] ?? []); $rec = (array)($_POST['rec'] ?? []); $ch = 0;
     if ($ids) {
       $q = $pdo->prepare('SELECT id, category, has_invoice, has_receipt FROM budget_tx WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')'); $q->execute($ids);
-      $up = $pdo->prepare('UPDATE budget_tx SET category=?, has_invoice=?, has_receipt=?, updated_at=? WHERE id=?');
-      foreach ($q as $r) {
+      $up = $pdo->prepare('UPDATE budget_tx SET category=?, has_invoice=?, has_receipt=?, updated_at=? WHERE id=?'); $learn = []; $nm = $pdo->prepare('SELECT name FROM budget_tx WHERE id=?');
+      foreach ($q->fetchAll() as $r) {
         $id = (int)$r['id']; $c = (string)($cat[$id] ?? $r['category']); if ($c !== '' && !in_array($c, $cats, true)) $c = (string)$r['category'];
         $iv = isset($inv[$id]) ? 1 : 0; $rc = isset($rec[$id]) ? 1 : 0;
         if ($c !== $r['category'] || $iv !== (int)$r['has_invoice'] || $rc !== (int)$r['has_receipt']) { $up->execute([$c, $iv, $rc, now(), $id]); $ch++; }
+        if ($r['category'] === '' && $c !== '' && !empty($_POST['learn'])) { $nm->execute([$id]); $learn[(string)$nm->fetchColumn()] = $c; }
       }
     }
-    if ($ch) audit('budget_save', 'budget', '', "עודכנו $ch תנועות (קטגוריה/חשבונית/קבלה)"); $flash($ch ? "נשמרו שינויים ב-$ch תנועות." : 'לא היו שינויים.');
+    $lr = 0; $lx = 0; foreach ($learn ?? [] as $kw => $c) { $n2 = budget_learn((string)$kw, $c); if ($n2 >= 0) { $lr++; $lx += $n2; } }
+    if ($ch) audit('budget_save', 'budget', '', "עודכנו $ch תנועות (קטגוריה/חשבונית/קבלה)" . ($lr ? ", נלמדו $lr כללים" : ''));
+    $flash($ch ? "נשמרו שינויים ב-$ch תנועות." . ($lr ? " המערכת למדה $lr כללי שיוך חדשים" . ($lx ? " ושייכה אוטומטית עוד $lx תנועות דומות" : '') . '.' : '') : 'לא היו שינויים.');
   } elseif ($act === 'bulk') {
     $c = (string)($_POST['c'] ?? ''); if ($c === '' || !in_array($c, $cats, true)) $flash('בחרי קטגוריה לשיוך.', false);
     $st = $pdo->prepare("UPDATE budget_tx SET category=?, updated_at=? $wh"); $st->execute(array_merge([$c, now()], $wa)); $n = $st->rowCount();
     audit('budget_bulk', 'budget', '', "שויכו $n תנועות לקטגוריה $c"); $flash("$n תנועות שויכו לקטגוריה \"$c\".");
+  } elseif ($act === 'pdf_preview') {
+    $j = json_decode((string)($_POST['rows'] ?? ''), true);
+    if (!is_array($j) || !$j) $flash('לא התקבלו תנועות מה-PDF.', false);
+    if (count($j) > BUDGET_MAX_IMPORT) $flash('יותר מדי שורות בקובץ (מקסימום ' . BUDGET_MAX_IMPORT . ').', false);
+    $items = budget_prepare($j);
+    if (!$items) $flash('לא נמצאו בקובץ תנועות תקינות (תאריך, שם וסכום).', false);
+    $_SESSION['bpdf'] = $items; audit('budget_pdf_preview', 'budget', '', count($items) . ' שורות'); redirect('budget_tx.php?pdf=1#pdfprev');
+  } elseif ($act === 'pdf_cancel') { unset($_SESSION['bpdf']); $flash('הייבוא בוטל. לא נשמר דבר.');
+  } elseif ($act === 'pdf_apply') {
+    $items = $_SESSION['bpdf'] ?? null; if (!is_array($items)) $flash('פג תוקף התצוגה המקדימה. העלי את הקובץ שוב.', false);
+    [$ad, $un] = budget_commit($items, array_map('intval', (array)($_POST['pick'] ?? [])), $by); unset($_SESSION['bpdf']);
+    audit('budget_import', 'budget', '', "PDF: יובאו $ad, ללא שיוך $un");
+    $flash("יובאו $ad תנועות מה-PDF" . ($un ? ". $un מהן לא שויכו אוטומטית. כדי לשייך אותן ידנית (והמערכת תלמד לפעם הבאה) יש לסנן קטגוריה \"לא משויך\"." : ' ושויכו כולן אוטומטית.'));
   } elseif ($act === 'import') {
     $fl = $_FILES['file'] ?? null;
     if (!$fl || ($fl['error'] ?? 4) !== UPLOAD_ERR_OK) $flash(upload_error_text((int)($fl['error'] ?? UPLOAD_ERR_NO_FILE)), false);
@@ -114,7 +130,7 @@ page_head('תקציב – תנועות');
 <p><b><?= (int)$tot['n'] ?></b> תנועות · הוצאות <b><?= e(budget_money0($tot['ex'])) ?></b> · הכנסות <b class="ok"><?= e(budget_money0($tot['inc'])) ?></b> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'csv=1') ?>">ייצוא CSV (לפי הסינון)</a></p>
 <?php if ($rows): ?>
 <form method="post" class="dirty" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="save">
-<div class="bar"><button class="sv" disabled>שמירת שינויים בקטגוריות ובמסמכים</button></div>
+<div class="bar"><button class="sv" disabled>שמירת שינויים בקטגוריות ובמסמכים</button> <label class="inl"><input type="checkbox" name="learn" value="1" checked> זכרי שיוך של תנועה שלא שויכה (לפי שם הספק) גם לפעם הבאה</label></div>
 <div class="card sc"><table>
 <tr><th><?= $sortLink('d', 'תאריך') ?></th><th><?= $sortLink('n', 'שם') ?></th><th>תיאור</th><th>אסמכתה</th><th><?= $sortLink('a', 'סכום') ?></th><th><?= $sortLink('c', 'קטגוריה') ?></th><th><?= $sortLink('u', 'יחידה') ?></th><th>חשבונית</th><th>קבלה</th><th></th></tr>
 <?php foreach ($rows as $r): $id = (int)$r['id']; ?>
@@ -130,8 +146,23 @@ page_head('תקציב – תנועות');
 <form method="post" class="bar card" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="bulk">
   <label>שיוך כל התנועות שמוצגות בסינון (<?= (int)$tot['n'] ?>) לקטגוריה<select name="c"><?= $opt($cats, '', '— בחרי —') ?></select></label><button class="sec" data-confirm="לשייך את כל <?= (int)$tot['n'] ?> התנועות שבסינון לקטגוריה שנבחרה?">שייכי</button></form>
 <?php else: ?><div class="card"><p>לא נמצאו תנועות.</p></div><?php endif; ?>
+<?php $pv = $_SESSION['bpdf'] ?? null; if (is_array($pv) && isset($_GET['pdf'])): $nNew = count(array_filter($pv, fn($x) => !$x['dup'])); $nUn = count(array_filter($pv, fn($x) => !$x['dup'] && $x['cat'] === '')); ?>
+<form method="post" class="card" action="budget_tx.php" id="pdfprev"><?= csrf_field() ?>
+  <h2>תצוגה מקדימה – ייבוא מ-PDF</h2>
+  <p><b><?= count($pv) ?></b> תנועות בקובץ: <b><?= $nNew ?></b> חדשות<?= count($pv) - $nNew ? ', ' . (count($pv) - $nNew) . ' כבר קיימות (ידולגו)' : '' ?>. <b><?= $nNew - $nUn ?></b> שויכו אוטומטית לקטגוריה<?= $nUn ? ', <b>' . $nUn . '</b> ללא שיוך (יישארו בטבלה לשיוך ידני)' : '' ?>.</p>
+  <div class="sc"><table><tr><th>ייבוא</th><th>תאריך</th><th>שם</th><th>תיאור</th><th>אסמכתה</th><th>סכום</th><th>קטגוריה</th></tr>
+  <?php foreach ($pv as $i => $x): ?>
+    <tr<?= $x['dup'] ? ' class="mu"' : ($x['cat'] === '' ? ' class="unm"' : '') ?>><td><input type="checkbox" name="pick[]" value="<?= $i ?>" aria-label="ייבוא"<?= $x['dup'] ? ' disabled' : ' checked' ?>></td>
+    <td class="n"><?= e(date('d/m/Y', strtotime($x['d']))) ?></td><td><?= e($x['n']) ?></td><td><?= e($x['e']) ?></td><td><?= e($x['r']) ?></td>
+    <td class="n<?= $x['inc'] ? ' ok' : '' ?>"><bdi dir="ltr"><?= $x['inc'] ? '+' : '' ?><?= e(budget_money($x['a'])) ?></bdi></td>
+    <td><?= $x['dup'] ? 'כבר קיימת' : ($x['cat'] === '' ? '— לא משויך —' : e($x['cat'])) ?></td></tr>
+  <?php endforeach; ?></table></div>
+  <p class="bar"><button name="act" value="pdf_apply" data-confirm="לייבא את <?= $nNew ?> התנועות שסומנו?">ייבוא התנועות שסומנו</button><button name="act" value="pdf_cancel" class="sec" formnovalidate>ביטול</button></p>
+</form>
+<?php endif; ?>
 <details class="card" id="imp"><summary><b>ייבוא מ-Excel או CSV</b></summary>
-  <form method="post" enctype="multipart/form-data" class="bar" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="import"><label>קובץ (xlsx / csv)<input type="file" name="file" accept=".xlsx,.csv" required></label><button>ייבוא</button></form>
+  <form method="post" enctype="multipart/form-data" class="bar" action="<?= e($self) ?>" data-bpdf><?= csrf_field() ?><input type="hidden" name="act" value="import"><input type="hidden" name="rows" value=""><label>קובץ (PDF / xlsx / csv)<input type="file" name="file" accept=".pdf,.xlsx,.csv" required></label><button>ייבוא</button> <span id="bpdf-msg" class="mu" role="status"></span></form>
+  <p class="mu"><b>קובץ PDF:</b> רשימת העברות או תנועות חשבון מהבנק. המערכת קוראת את התנועות, משייכת לקטגוריות לפי הכללים, ומציגה תצוגה מקדימה לאישור. מה שלא זוהה נשאר "לא משויך" לשיוך ידני.</p>
   <p class="mu">עמודות: תאריך, שם, תיאור, אסמכתה, סכום, קטגוריה, יחידה, סוג (הכנסה / הוצאה), חשבונית, קבלה. נדרשות לפחות "תאריך" ו"סכום". שורות בלי קטגוריה ישויכו אוטומטית לפי מילות מפתח. שורות זהות לתנועה קיימת ידולגו, כך שאפשר לייבא שוב קובץ שיוצא מכאן. עד <?= BUDGET_MAX_IMPORT ?> שורות בקובץ.</p>
 </details>
 <?php page_foot();

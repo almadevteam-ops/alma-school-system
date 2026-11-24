@@ -101,6 +101,60 @@ function budget_import(string $path, string $name, string $by): array {
   return [$added, $dup, $bad];
 }
 
+
+/** שיוך לפי היסטוריה: אותו שם ספק (ואם אין – אותו תיאור) ששויך בעבר, הקטגוריה האחרונה שנבחרה. */
+function budget_history_cat(string $name, string $descr): string {
+  static $q = null, $memo = []; $k = $name . "\x1f" . $descr; if (isset($memo[$k])) return $memo[$k];
+  if ($q === null) { $q = [db()->prepare("SELECT category FROM budget_tx WHERE name = ? AND category <> '' GROUP BY category ORDER BY COUNT(*) DESC, MAX(id) DESC LIMIT 1"), db()->prepare("SELECT category FROM budget_tx WHERE descr = ? AND descr <> '' AND category <> '' GROUP BY category ORDER BY COUNT(*) DESC, MAX(id) DESC LIMIT 1")]; }
+  $c = ''; if ($name !== '') { $q[0]->execute([$name]); $c = (string)$q[0]->fetchColumn(); }
+  if ($c === '' && $descr !== '') { $q[1]->execute([$descr]); $c = (string)$q[1]->fetchColumn(); }
+  return $memo[$k] = $c;
+}
+/** הכנת שורות מ-PDF לתצוגה מקדימה: אימות, שיוך אוטומטי וזיהוי כפילויות (בלי לכתוב למסד). */
+function budget_prepare(array $recs): array {
+  $rules = null; $pdo = db(); $out = [];
+  $ex = $pdo->prepare('SELECT 1 FROM budget_tx WHERE tx_date=? AND name=? AND descr=? AND ref=? AND amount=? AND is_income=? LIMIT 1');
+  $seen = [];
+  foreach (array_slice($recs, 0, BUDGET_MAX_IMPORT) as $r) {
+    if (!is_array($r)) continue;
+    $d = budget_date((string)($r['d'] ?? '')); $a = budget_amount((string)($r['a'] ?? ''));
+    $n = mb_substr(trim((string)($r['n'] ?? '')), 0, 150); $e = mb_substr(trim((string)($r['e'] ?? '')), 0, 300); $ref = mb_substr(trim((string)($r['r'] ?? '')), 0, 100);
+    $inc = ($r['t'] ?? '') === 'in' ? 1 : 0;
+    if ($d === '' || $a === null || $a <= 0 || $n === '') continue;
+    $key = implode("\x1f", [$d, $n, $e, $ref, $a, $inc]);
+    $ex->execute([$d, $n, $e, $ref, $a, $inc]);
+    $dup = (bool)$ex->fetchColumn() || isset($seen[$key]); $seen[$key] = true;
+    $cat = budget_auto($n, $e, $rules); if ($cat === '') $cat = budget_history_cat($n, $e);
+    $out[] = ['d' => $d, 'n' => $n, 'e' => $e, 'r' => $ref, 'a' => $a, 'inc' => $inc, 'cat' => $cat, 'dup' => $dup];
+  }
+  return $out;
+}
+/** כתיבת שורות שנבחרו (אינדקסים) מתוך budget_prepare. מחזיר [נוספו, ללא שיוך]. */
+function budget_commit(array $items, array $pick, string $by): array {
+  $pdo = db(); $units = budget_units(); $added = 0; $un = 0;
+  $ins = $pdo->prepare('INSERT INTO budget_tx (tx_date,name,descr,ref,amount,is_income,category,unit,has_invoice,has_receipt,created_at,created_by) VALUES (?,?,?,?,?,?,?,?,0,0,?,?)');
+  $pdo->beginTransaction();
+  try {
+    foreach ($pick as $i) {
+      $x = $items[(int)$i] ?? null; if (!$x || $x['dup']) continue;
+      budget_cat_ensure($x['cat']); $ins->execute([$x['d'], $x['n'], $x['e'], $x['r'], $x['a'], $x['inc'], $x['cat'], budget_unit_for('', $x['cat']), now(), mb_substr($by, 0, 100)]);
+      $added++; if ($x['cat'] === '') $un++;
+    }
+    $pdo->commit();
+  } catch (Throwable $t) { $pdo->rollBack(); throw $t; }
+  return [$added, $un];
+}
+/** למידה משיוך ידני: כלל חדש לפי שם הספק, והחלתו על תנועות נוספות שעדיין לא משויכות. מחזיר כמה תנועות נוספות שויכו (-1 אם הכלל כבר קיים). */
+function budget_learn(string $kw, string $cat): int {
+  $kw = mb_substr(trim($kw), 0, 100); if ($kw === '' || $cat === '') return -1;
+  $pdo = db(); $q = $pdo->prepare('SELECT 1 FROM budget_rules WHERE kw = ? LIMIT 1'); $q->execute([$kw]); if ($q->fetchColumn()) return -1;
+  $ord = (int)$pdo->query('SELECT COALESCE(MAX(ord),0) FROM budget_rules')->fetchColumn() + 10;
+  $pdo->prepare('INSERT INTO budget_rules (ord, kw, category) VALUES (?,?,?)')->execute([$ord, $kw, $cat]);
+  $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $kw) . '%';
+  $u = $pdo->prepare("UPDATE budget_tx SET category = ?, updated_at = ? WHERE category = '' AND CONCAT(name, ' ', descr) LIKE ?"); $u->execute([$cat, now(), $like]);
+  return $u->rowCount();
+}
+
 /** תנאי WHERE ופרמטרים לפי מסנני הדף. */
 function budget_where(array $f): array {
   $w = []; $a = [];

@@ -647,3 +647,100 @@
     if (e.key === 'Escape') menus().forEach(function (m) { m.open = false; });
   });
 })();
+
+// תקציב: ייבוא תנועות מקובץ PDF (רשימת העברות / תנועות עו"ש). הקריאה נעשית בדפדפן (pdf.js), והשרת מקבל רק שורות מסודרות לתצוגה מקדימה.
+(function () {
+  var form = document.querySelector('form[data-bpdf]'); if (!form) return;
+  var BASE = (document.currentScript && document.currentScript.src ? document.currentScript.src.replace(/app\.js(\?.*)?$/, '') : 'assets/');
+  var loading = null;
+  function load() {
+    if (window.pdfjsLib) return Promise.resolve();
+    return loading || (loading = new Promise(function (res, rej) {
+      var s = document.createElement('script'); s.src = BASE + 'vendor/pdf/pdf.min.js'; s.onload = res; s.onerror = function () { rej(new Error('טעינת קורא ה-PDF נכשלה')); }; document.head.appendChild(s);
+    }));
+  }
+  var HDR = [
+    [/^תאריך( ביצוע| פעולה| חיוב| עסקה)?$/, 'd'], [/^(שם|מוטב|שם מוטב|שם המוטב|שם הספק|ספק)$/, 'n'], [/^(תיאור|תאור|פרטים|פירוט|הפעולה|פעולה|תיאור הפעולה)$/, 'e'],
+    [/^(אסמכתה|אסמכתא|אסמ'|מס' אסמכתא)$/, 'r'], [/^סכום( הפעולה)?$/, 'a'], [/^(חובה|בחובה)$/, 'db'], [/^(זכות|בזכות)$/, 'cr'], [/^(חשבון|יתרה|תאריך ערך|ערך|פרטי חשבון)$/, 'x']
+  ];
+  function hdrKey(t) { t = t.replace(/[:‎‏‪-‮]/g, '').trim(); for (var i = 0; i < HDR.length; i++) if (HDR[i][0].test(t)) return HDR[i][1]; return null; }
+  // פריטי טקסט של עמוד → שורות של "תאים" (פריטים סמוכים מאוחדים)
+  function pageLines(items) {
+    var it = items.filter(function (i) { return i.str && i.str.trim() !== ''; }).map(function (i) { return { s: i.str.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, ''), x: i.transform[4], y: i.transform[5], w: i.width || 0, h: Math.abs(i.height || i.transform[3] || 10) }; });
+    it.sort(function (a, b) { return b.y - a.y || b.x - a.x; });
+    var lines = [];
+    it.forEach(function (i) { var L = lines[lines.length - 1]; if (L && Math.abs(L.y - i.y) <= 3) L.items.push(i); else lines.push({ y: i.y, items: [i] }); });
+    lines.forEach(function (L) {
+      L.items.sort(function (a, b) { return (b.x + b.w) - (a.x + a.w); });
+      var cells = [];
+      L.items.forEach(function (i) {
+        var c = cells[cells.length - 1];
+        if (c && c.l - (i.x + i.w) <= Math.max(7, i.h * 0.6)) { c.s += ' ' + i.s.trim(); c.l = Math.min(c.l, i.x); }
+        else cells.push({ s: i.s.trim(), r: i.x + i.w, l: i.x });
+      });
+      L.cells = cells;
+    });
+    return lines;
+  }
+  function col(cols, c) {   // העמודה שהתא נמצא בה: חפיפה, ואם אין – הקרובה ביותר
+    var best = null, bo = 0;
+    cols.forEach(function (k) { var o = Math.min(c.r, k.r + 6) - Math.max(c.l, k.l - 6); if (o > bo) { bo = o; best = k; } });
+    if (best) return best;
+    var bd = 1e9; cols.forEach(function (k) { var d = Math.abs((c.l + c.r) / 2 - (k.l + k.r) / 2); if (d < bd) { bd = d; best = k; } }); return best;
+  }
+  function amount(t) {
+    if (!t) return null; t = String(t).trim(); var neg = /^\(.*\)$/.test(t) || /-\s*$/.test(t) || /^-/.test(t);
+    var m = t.replace(/[^\d.]/g, ''); if (!/^\d+(\.\d+)?$/.test(m)) return null;
+    return neg ? -parseFloat(m) : parseFloat(m);
+  }
+  function parse(pages) {
+    var recs = [], cols = null, last = null, lastY = null;
+    pages.forEach(function (lines) {
+      last = null;
+      lines.forEach(function (L) {
+        var hs = L.cells.map(function (c) { return [c, hdrKey(c.s)]; }).filter(function (p) { return p[1]; });
+        if (hs.length >= 3 && hs.some(function (p) { return p[1] === 'd'; })) { cols = hs.map(function (p) { return { k: p[1], l: p[0].l, r: p[0].r, seen: 0 }; }); last = null; return; }
+        if (!cols) return;
+        var f = {}; L.cells.forEach(function (c) { var k = col(cols, c); if (k) f[k.k] = (f[k.k] ? f[k.k] + ' ' : '') + c.s; });
+        var dm = f.d && f.d.match(/(\d{1,2})[\/.](\d{1,2})[\/.](\d{4}|\d{2})/);
+        if (dm) { last = { d: dm[0], n: f.n || '', e: f.e || '', r: f.r || '', a: f.a || '', db: f.db || '', cr: f.cr || '' }; lastY = L.y; recs.push(last); }
+        else if (last && lastY - L.y <= 22 && !(f.a || f.db || f.cr)) { ['n', 'e', 'r'].forEach(function (k) { if (f[k]) last[k] = (last[k] ? last[k] + ' ' : '') + f[k]; }); lastY = L.y; }
+        else last = null;
+      });
+    });
+    var ledger = cols && cols.some(function (k) { return k.k === 'db' || k.k === 'cr'; });
+    var out = [];
+    recs.forEach(function (r) {
+      var amt, inc = 0;
+      if (ledger) { var db = amount(r.db), cr = amount(r.cr); if (cr !== null && cr !== 0) { amt = Math.abs(cr); inc = 1; } else if (db !== null && db !== 0) amt = Math.abs(db); else return; }
+      else { var a = amount(r.a); if (a === null) return; amt = Math.abs(a); }
+      var n = (r.n || '').trim(), e = (r.e || '').trim(); if (n === '') { n = e; e = ''; }
+      out.push({ d: r.d, n: n, e: e, r: (r.r || '').trim(), a: amt, t: inc ? 'in' : 'out' });
+    });
+    return out;
+  }
+  function readPdf(file) {
+    return load().then(function () {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + 'vendor/pdf/pdf.worker.min.js';
+      return file.arrayBuffer();
+    }).then(function (buf) { return window.pdfjsLib.getDocument({ data: buf, isEvalSupported: false }).promise; }).then(function (pdf) {
+      var pages = [], chain = Promise.resolve();
+      for (var p = 1; p <= Math.min(pdf.numPages, 60); p++) (function (n) {
+        chain = chain.then(function () { return pdf.getPage(n); }).then(function (pg) { return pg.getTextContent(); }).then(function (tc) { pages.push(pageLines(tc.items)); });
+      })(p);
+      return chain.then(function () { return parse(pages); });
+    });
+  }
+  var msg = document.getElementById('bpdf-msg');
+  function say(t) { if (msg) msg.textContent = t; }
+  form.addEventListener('submit', function (e) {
+    var fi = form.querySelector('input[type=file]'), f = fi && fi.files && fi.files[0];
+    if (!f || !/\.pdf$/i.test(f.name)) return;       // xlsx / csv – שליחה רגילה לשרת
+    e.preventDefault(); say('קורא את ה-PDF…');
+    readPdf(f).then(function (rows) {
+      if (!rows.length) { say('לא זוהו תנועות בקובץ. ודאי שזה PDF של רשימת העברות או תנועות חשבון (עם עמודות תאריך וסכום/חובה/זכות).'); return; }
+      form.querySelector('[name=act]').value = 'pdf_preview'; form.querySelector('[name=rows]').value = JSON.stringify(rows);
+      fi.disabled = true; form.submit();
+    }).catch(function (err) { say('קריאת ה-PDF נכשלה: ' + (err && err.message ? err.message : err)); });
+  });
+})();
