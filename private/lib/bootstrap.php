@@ -130,6 +130,7 @@ function csrf_token(): string {
 function csrf_field(): string { return '<input type="hidden" name="_t" value="' . e(csrf_token()) . '">'; }
 function csrf_check(): void {
   if (!hash_equals((string)($_SESSION['csrf'] ?? ''), (string)($_POST['_t'] ?? ''))) {
+    if (in_array(basename((string)($_SERVER['SCRIPT_NAME'] ?? '')), ['login.php', 'login2.php'], true) && empty($_SESSION['uid'])) { header('Location: /app/login.php'); exit; }   // דף כניסה ישן (למשל באפליקציה שנפתחה מחדש): טוענים דף חדש במקום שגיאה
     fail_page(403, 'הבקשה לא תקינה או שהדף פג תוקף. רעננו את הדף ונסו שוב.');
   }
 }
