@@ -25,40 +25,45 @@ function doc_templates(): array { return docs_ready() ? db()->query('SELECT * FR
 function doc_template(int $id): ?array { $st = db()->prepare('SELECT * FROM doc_templates WHERE id = ?'); $st->execute([$id]); return $st->fetch() ?: null; }
 function doc_student(int $id): ?array { $st = db()->prepare('SELECT * FROM students WHERE id = ?'); $st->execute([$id]); return $st->fetch() ?: null; }
 
-/** יצירת PDF: כותרת, תוכן התבנית עם פרטי התלמידה, "בברכה / ההנהלה" וחתימה אוטומטית. */
-function doc_pdf(array $tpl, array $stu, int $ys, ?string $date = null): string {
-  $date ??= date('d/m/Y'); $root = dirname(__DIR__);
-  $d = new PdfDoc($root . '/fonts', $root . '/docs/bg.jpg', !empty($tpl['signed']) ? $root . '/docs/sig.png' : '');
+/** תלמידה "ריקה" למסמך כללי (בלי שיוך לתלמידה). */
+function doc_blank_student(): array { return ['id' => 0, 'name' => '', 'idn' => '', 'grade' => '', 'cls' => '', 'f_name' => '', 'm_name' => '', 'addr' => '', 'city' => '', 'email' => '']; }
+/** ציור מסמך אחד (עמוד או יותר) על PdfDoc קיים: כותרת, תוכן התבנית עם פרטי התלמידה, "בברכה / ההנהלה" וחתימה אוטומטית. */
+function doc_render(PdfDoc $d, array $tpl, array $stu, int $ys, string $date): void {
   $center = ($tpl['align'] ?? 'c') !== 'r'; $size = $center ? 20.0 : 15.0; $lh = $center ? 26.0 : 22.0; $cx = 297.64; $rx = 540.0; $maxW = 460.0; $bottom = 700.0;
-  $d->addPage(); $d->text($date, 90, 47, 11, 'b', 'l'); $d->text('בס"ד', $cx, 47, 11, 'b', 'c');
+  $d->addPage(!empty($tpl['signed'])); $d->text($date, 90, 47, 11, 'b', 'l'); $d->text('בס"ד', $cx, 47, 11, 'b', 'c');
   $y = 241.0;
   foreach ($d->wrap(doc_fill((string)$tpl['title'], $stu, $ys, $date), 20, $maxW, 'b') as $ln) { $d->text($ln, $cx, $y, 20, 'b', 'c', true); $y += 28; }
   $y += $center ? 26 : 14;
   foreach (preg_split('/\R/u', doc_fill((string)$tpl['body'], $stu, $ys, $date)) ?: [] as $para) {
     if (trim($para) === '') { $y += $lh * 0.6; continue; }
     foreach ($d->wrap($para, $size, $maxW, 'r') as $ln) {
-      if ($y > $bottom) { $d->addPage(); $y = 200.0; }
+      if ($y > $bottom) { $d->addPage(!empty($tpl['signed'])); $y = 200.0; }
       $center ? $d->text($ln, $cx, $y, $size, 'r', 'c') : $d->text($ln, $rx, $y, $size, 'r', 'r'); $y += $lh;
     }
     $y += $center ? 28 : 8;
   }
-  $y += 28; if ($y + 100 > $bottom + 20) { $d->addPage(); $y = 200.0; }
+  $y += 28; if ($y + 100 > $bottom + 20) { $d->addPage(!empty($tpl['signed'])); $y = 200.0; }
   $d->text('בברכה', $cx, $y, 20, 'r', 'c'); $d->text('ההנהלה', $cx, $y + 29, 20, 'r', 'c');
   if (!empty($tpl['signed'])) $d->signature($cx + 2, $y + 37, 118);
-  return $d->output();
 }
-function doc_filename(array $tpl, array $stu): string { return preg_replace('/[\\\\\/:*?"<>|\s]+/u', '_', trim((string)$tpl['name'] . '_' . (string)$stu['name'])) . '.pdf'; }
-function doc_default_subject(array $tpl, array $stu): string { return mb_substr((string)$tpl['name'] . ' – ' . (string)$stu['name'], 0, 190); }
-function doc_default_msg(array $tpl, array $stu): string { return "שלום רב,\nמצורף " . $tpl['name'] . ' עבור ' . $stu['name'] . ".\n\nבברכה,\nהנהלת תיכון עלמא"; }
+function doc_newpdf(): PdfDoc { $root = dirname(__DIR__); return new PdfDoc($root . '/fonts', $root . '/docs/bg.jpg', $root . '/docs/sig.png'); }
+function doc_pdf(array $tpl, array $stu, int $ys, ?string $date = null): string { $d = doc_newpdf(); doc_render($d, $tpl, $stu, $ys, $date ?? date('d/m/Y')); return $d->output(); }
+/** PDF אחד עם מסמך לכל תלמידה ברשימה (עמוד או יותר לכל אחת). */
+function doc_pdf_multi(array $tpl, array $students, int $ys, ?string $date = null): string { $d = doc_newpdf(); $date ??= date('d/m/Y'); foreach ($students as $s) doc_render($d, $tpl, $s, $ys, $date); return $d->output(); }
+function doc_filename(array $tpl, array $stu): string { return preg_replace('/[\\\\\/:*?"<>|\s]+/u', '_', trim((string)$tpl['name'] . ((string)$stu['name'] !== '' ? '_' . (string)$stu['name'] : ''))) . '.pdf'; }
+function doc_default_subject(array $tpl, array $stu): string { return mb_substr((string)$tpl['name'] . ((string)$stu['name'] !== '' ? ' – ' . (string)$stu['name'] : ''), 0, 190); }
+function doc_default_msg(array $tpl, array $stu): string { return "שלום רב,\nמצורף " . $tpl['name'] . ((string)$stu['name'] !== '' ? ' עבור ' . $stu['name'] : '') . ".\n\nבברכה,\nהנהלת תיכון עלמא"; }
 
 /** רישום מסמך בהיסטוריית התלמידה (תמונת מצב של הטקסט כפי שהופק). */
 function doc_record(array $stu, array $tpl, int $ys, string $by, string $sentTo = '', ?string $date = null): int {
   $date ??= date('d/m/Y'); $dt = DateTime::createFromFormat('d/m/Y', $date) ?: new DateTime();
   db()->prepare('INSERT INTO doc_history (student_id, template_id, name, title, body, align, signed, year, doc_date, sent_to, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')->execute([
-    (int)$stu['id'], !empty($tpl['id']) ? (int)$tpl['id'] : null, mb_substr((string)$tpl['name'], 0, 100), mb_substr(doc_fill((string)$tpl['title'], $stu, $ys, $date), 0, 150), doc_fill((string)$tpl['body'], $stu, $ys, $date),
+    (int)($stu['id'] ?? 0), !empty($tpl['id']) ? (int)$tpl['id'] : null, mb_substr((string)$tpl['name'], 0, 100), mb_substr(doc_fill((string)$tpl['title'], $stu, $ys, $date), 0, 150), doc_fill((string)$tpl['body'], $stu, $ys, $date),
     ($tpl['align'] ?? 'c') === 'r' ? 'r' : 'c', !empty($tpl['signed']) ? 1 : 0, $ys, $dt->format('Y-m-d'), mb_substr($sentTo, 0, 400), mb_substr($by, 0, 100), now()]);
   return (int)db()->lastInsertId();
 }
+/** מסמכים כלליים (ללא שיוך לתלמידה). */
+function doc_general(int $limit = 40): array { return doc_history(0, $limit); }
 function doc_history(int $sid, int $limit = 40): array { $st = db()->prepare('SELECT * FROM doc_history WHERE student_id = ? ORDER BY id DESC LIMIT ' . (int)$limit); $st->execute([$sid]); return $st->fetchAll(); }
 function doc_hist_get(int $id): ?array { $st = db()->prepare('SELECT * FROM doc_history WHERE id = ?'); $st->execute([$id]); return $st->fetch() ?: null; }
 /** מסמך מההיסטוריה בצורת תבנית (הטקסט כבר מולא). */

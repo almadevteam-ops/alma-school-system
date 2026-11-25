@@ -2,7 +2,7 @@
 require __DIR__ . '/../../private/lib/bootstrap.php';
 $u = require_role(['admin', 'secretary']); $by = (string)$u['name'];
 if (!docs_ready()) { page_head('מסמכים'); echo '<h1>מסמכים</h1><p class="aptn">כדי להפעיל את המסמכים יש להריץ "עדכון מסד נתונים" (תחזוקה).</p>'; page_foot(); exit; }
-$msg = ''; $err = ''; $self = 'documents.php';
+$msg = ''; $err = ''; $self = 'documents.php'; $recips = null;
 $back = (string)($_POST['back'] ?? ''); $back = preg_match('~^student\.php\?id=\d+(&open=[a-z,]+)?$~', $back) ? $back : '';
 $done = function (bool $ok, string $t) use (&$msg, &$err, $back) { if ($back !== '') { $_SESSION['docmsg'] = [$ok, $t]; redirect($back); } if ($ok) $msg = $t; else $err = $t; };
 $years = function (): array { $y = doc_year_start(); return [$y - 1, $y, $y + 1]; };
@@ -21,21 +21,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   } elseif ($act === 'tpl_del') {
     $t = doc_template((int)($_POST['tid'] ?? 0)); if ($t && !$t['builtin']) { db()->prepare('DELETE FROM doc_templates WHERE id = ?')->execute([$t['id']]); audit('doc_tpl_del', 'doc', (string)$t['id'], (string)$t['name']); $msg = 'התבנית נמחקה.'; } else $err = 'לא ניתן למחוק תבנית מובנית.';
-  } elseif ($act === 'manual') {   // מסמך ידני לתלמידה: נשמר בהיסטוריה שלה
-    $stu = doc_student($sid); $title = mb_substr(trim((string)($_POST['title'] ?? '')), 0, 150); $body = trim((string)($_POST['body'] ?? ''));
+  } elseif (in_array($act, ['manual', 'manual_dl', 'manual_send', 'gen_save', 'gen_dl', 'gen_send'], true)) {   // מסמך ידני: לתלמידה (נשמר בהיסטוריה שלה) או כללי (ללא שיוך)
+    $general = str_starts_with($act, 'gen_'); $stu = $general ? doc_blank_student() : doc_student($sid);
+    $title = mb_substr(trim((string)($_POST['title'] ?? '')), 0, 150); $body = trim((string)($_POST['body'] ?? '')); $to = trim((string)($_POST['email'] ?? ''));
     if (!$stu) $done(false, 'התלמידה לא נמצאה.'); elseif ($title === '' || $body === '') $done(false, 'יש למלא כותרת ותוכן למסמך.');
     else {
       $tpl = ['id' => 0, 'name' => $title, 'title' => $title, 'body' => $body, 'align' => ($_POST['align'] ?? 'r') === 'c' ? 'c' : 'r', 'signed' => isset($_POST['signed']) ? 1 : 0];
-      if (isset($_POST['save_tpl'])) { db()->prepare('INSERT INTO doc_templates (name,title,body,align,signed,builtin,created_at,updated_at) VALUES (?,?,?,?,?,0,?,?)')->execute([mb_substr($title, 0, 100), $title, $body, $tpl['align'], $tpl['signed'], now(), now()]); }
-      $hid = doc_record($stu, $tpl, $ysel(), $by); audit('doc_manual', 'student', (string)$sid, $title);
-      $done(true, 'המסמך "' . $title . '" נוצר ונשמר בהיסטוריה של התלמידה' . (isset($_POST['save_tpl']) ? ', וגם כתבנית' : '') . '.');
+      if (isset($_POST['save_tpl'])) db()->prepare('INSERT INTO doc_templates (name,title,body,align,signed,builtin,created_at,updated_at) VALUES (?,?,?,?,?,0,?,?)')->execute([mb_substr($title, 0, 100), $title, $body, $tpl['align'], $tpl['signed'], now(), now()]);
+      $ys = $ysel(); $hid = doc_record($stu, $tpl, $ys, $by); $h = doc_hist_get($hid); audit($general ? 'doc_general' : 'doc_manual', $general ? 'doc' : 'student', (string)($general ? $hid : $sid), $title);
+      $saved = 'המסמך "' . $title . '" נשמר בהיסטוריה' . ($general ? ' של המסמכים הכלליים' : ' של התלמידה') . (isset($_POST['save_tpl']) ? ', וגם כתבנית' : '');
+      if (str_ends_with($act, '_dl')) $pdfOut(doc_pdf(doc_hist_tpl($h), $stu, $ys, doc_hist_date($h)), doc_filename(doc_hist_tpl($h), $stu), false);
+      elseif (str_ends_with($act, '_send')) {
+        if ($to === '' && !$general) $to = (string)$stu['email'];
+        [$ok, $er] = doc_send(doc_hist_tpl($h), $stu, $ys, $to, '', '', $by, $hid, doc_hist_date($h)); if ($ok) audit('doc_send', $general ? 'doc' : 'student', (string)($general ? $hid : $sid), $title . ' → ' . $to);
+        $done($ok, $ok ? $saved . ' ונשלח אל ' . $to . '.' : $saved . ', אך השליחה נכשלה: ' . $er);
+      } else $done(true, $saved . '.');
     }
   } elseif (in_array($act, ['h_view', 'h_dl', 'h_send'], true)) {   // מסמך מההיסטוריה
-    $h = doc_hist_get((int)($_POST['hid'] ?? 0)); $stu = $h ? doc_student((int)$h['student_id']) : null;
+    $h = doc_hist_get((int)($_POST['hid'] ?? 0)); $stu = $h ? ((int)$h['student_id'] ? doc_student((int)$h['student_id']) : doc_blank_student()) : null;
     if (!$h || !$stu) $done(false, 'המסמך לא נמצא.');
-    elseif ($act === 'h_send') { [$ok, $er] = doc_send(doc_hist_tpl($h), $stu, (int)$h['year'], (string)($_POST['email'] ?? ''), '', '', $by, (int)$h['id'], doc_hist_date($h)); audit('doc_send', 'student', (string)$stu['id'], $h['name'] . ' → ' . ($_POST['email'] ?? '')); $done($ok, $ok ? 'המסמך נשלח אל ' . trim((string)$_POST['email']) . '.' : 'השליחה נכשלה: ' . $er); }
+    elseif ($act === 'h_send') { [$ok, $er] = doc_send(doc_hist_tpl($h), $stu, (int)$h['year'], (string)($_POST['email'] ?? ''), '', '', $by, (int)$h['id'], doc_hist_date($h)); audit('doc_send', 'student', (string)($stu['id'] ?? 0), $h['name'] . ' → ' . ($_POST['email'] ?? '')); $done($ok, $ok ? 'המסמך נשלח אל ' . trim((string)$_POST['email']) . '.' : 'השליחה נכשלה: ' . $er); }
     else $pdfOut(doc_pdf(doc_hist_tpl($h), $stu, (int)$h['year'], doc_hist_date($h)), doc_filename(doc_hist_tpl($h), $stu), $act === 'h_view');
-  } elseif (in_array($act, ['view', 'dl', 'send'], true)) {   // הפקה מתבנית: תלמידה בודדת / כיתה / שכבה / כל התלמידות
+  } elseif (in_array($act, ['view', 'dl', 'send', 'dlpdf', 'recips'], true)) {   // הפקה מתבנית: תלמידה בודדת / כיתה / שכבה / כל התלמידות
     $tpl = doc_template((int)($_POST['tid'] ?? 0)); $aud = (string)($_POST['aud'] ?? ''); if (preg_match('/^s:(\d+)$/', $aud, $m)) { $sid = (int)$m[1]; }
     $list = $sid > 0 && ($aud === '' || $aud[0] === 's') ? array_filter([doc_student($sid)]) : doc_audience($aud); $ys = $ysel();
     if (!$tpl) $done(false, 'בחרי תבנית.'); elseif (!$list) $done(false, 'לא נמצאו תלמידות לבחירה.');
@@ -50,9 +57,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sent = doc_process(15); $left = (int)db()->query("SELECT COUNT(*) FROM doc_jobs WHERE status = 'pending'")->fetchColumn();
         $msg = "$n מסמכים הוכנסו לתור שליחה, נשלחו עד כה $sent" . ($left ? ". השאר ($left) יישלחו אוטומטית ברקע בדקות הקרובות" : '') . '.' . ($skip ? ' ללא כתובת מייל בכרטיס (' . count($skip) . '): ' . implode(', ', array_slice($skip, 0, 15)) . (count($skip) > 15 ? '…' : '') : '');
       }
-    } elseif ($act === 'view' || count($list) === 1) {
+    } elseif ($act === 'recips') {
+      $recips = $list;
+    } elseif (($act === 'view' || $act === 'dlpdf') && count($list) > 1) {   // PDF אחד עם כל התלמידות (מסמך לכל אחת)
+      if (count($list) > 400) $err = 'יותר מדי תלמידות לקובץ אחד.';
+      else {
+        $pdf = doc_pdf_multi($tpl, array_values($list), $ys);
+        if ($act === 'dlpdf') { foreach ($list as $s) doc_record($s, $tpl, $ys, $by); audit('doc_download', 'doc', '', $tpl['name'] . ': ' . count($list) . ' תלמידות (PDF אחד)'); }
+        $pdfOut($pdf, (string)$tpl['name'] . '.pdf', $act === 'view');
+      }
+    } elseif ($act === 'view' || $act === 'dlpdf' || count($list) === 1) {
       $s0 = reset($list); $pdf = doc_pdf($tpl, $s0, $ys);
-      if ($act === 'dl') { doc_record($s0, $tpl, $ys, $by); audit('doc_download', 'student', (string)$s0['id'], (string)$tpl['name']); }
+      if ($act === 'dl' || $act === 'dlpdf') { doc_record($s0, $tpl, $ys, $by); audit('doc_download', 'student', (string)$s0['id'], (string)$tpl['name']); }
       $pdfOut($pdf, doc_filename($tpl, $s0), $act === 'view');
     } else {
       if (count($list) > 400) { $err = 'יותר מדי תלמידות להורדה אחת.'; }
@@ -68,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 doc_lazy();
 $tpls = doc_templates(); $edit = isset($_GET['edit']) ? (int)$_GET['edit'] : -1; $et = $edit > 0 ? doc_template($edit) : null;
 $classes = db()->query("SELECT grade, cls, COUNT(*) n FROM students WHERE status = 'active' AND archived_at IS NULL GROUP BY grade, cls ORDER BY grade, cls")->fetchAll();
-$studs = db()->query("SELECT id, name, grade, cls FROM students WHERE status = 'active' AND archived_at IS NULL ORDER BY name")->fetchAll();
+$studs = db()->query("SELECT id, name, grade, cls, email FROM students WHERE status = 'active' AND archived_at IS NULL ORDER BY name")->fetchAll();
 $q = db()->query("SELECT status, COUNT(*) n FROM doc_jobs GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR); $pend = (int)($q['pending'] ?? 0);
 $jobs = db()->query("SELECT j.*, s.name sname, t.name tname FROM doc_jobs j LEFT JOIN students s ON s.id = j.student_id LEFT JOIN doc_templates t ON t.id = j.template_id ORDER BY j.id DESC LIMIT 40")->fetchAll();
 page_head('מסמכים');
@@ -86,17 +102,39 @@ page_head('מסמכים');
       <option value="all">כל התלמידות (<?= count($studs) ?>)</option>
       <optgroup label="שכבה"><?php foreach (GRADES as $g) { $n = array_sum(array_map(fn($c) => $c['grade'] === $g ? (int)$c['n'] : 0, $classes)); if ($n) echo '<option value="g:' . e($g) . '">שכבה ' . e($g) . ' (' . $n . ')</option>'; } ?></optgroup>
       <optgroup label="כיתה"><?php foreach ($classes as $c) echo '<option value="c:' . e($c['grade']) . '|' . e($c['cls']) . '">כיתה ' . e(class_label((string)$c['grade'], (string)$c['cls'])) . ' (' . (int)$c['n'] . ')</option>'; ?></optgroup>
-      <optgroup label="תלמידה בודדת"><?php foreach ($studs as $s) echo '<option value="s:' . (int)$s['id'] . '">' . e($s['name']) . ' – ' . e(class_label((string)$s['grade'], (string)$s['cls'])) . '</option>'; ?></optgroup>
+      <optgroup label="תלמידה בודדת"><?php foreach ($studs as $s) echo '<option value="s:' . (int)$s['id'] . '">' . e($s['name']) . ' – ' . e(class_label((string)$s['grade'], (string)$s['cls'])) . ($s['email'] !== '' ? ' (' . e($s['email']) . ')' : ' (אין מייל שמור)') . '</option>'; ?></optgroup>
     </select></label>
-    <label>מייל לשליחה (אופציונלי, לתלמידה בודדת בלבד; אחרת נשלח לכתובת שבכרטיס)<input type="email" name="email" maxlength="150" dir="ltr"></label>
+    <label>מייל אחר לשליחה (לתלמידה בודדת בלבד; אם ריק – נשלח לכתובת השמורה בכרטיס שלה)<input type="email" name="email" maxlength="150" dir="ltr"></label>
   </div>
   <details><summary>נוסח המייל (אופציונלי)</summary>
     <label>נושא<input name="subject" maxlength="190" placeholder="ברירת מחדל: שם המסמך – שם התלמידה"></label>
     <label>תוכן<textarea name="msg" rows="4" placeholder="ברירת מחדל: מצורף {שם המסמך} עבור שם התלמידה. אפשר להשתמש ב-{שם}, {כיתה}, {שנה_עברית}"></textarea></label>
   </details>
-  <p class="bar"><button name="act" value="view" class="sec" formtarget="_blank">תצוגה מקדימה</button> <button name="act" value="dl" class="sec">הורדה (PDF / ZIP)</button> <button name="act" value="send" data-confirm="לשלוח את המסמך במייל לתלמידות שנבחרו?">שליחה במייל</button></p>
-  <p class="mu">שליחה לכיתה / שכבה / כולן יוצאת ברקע, מסמך אחד לכל תלמידה, לכתובת המייל שבכרטיס שלה. תלמידות בלי כתובת מייל מדולגות ומוצגות ברשימה.</p>
+  <p class="bar"><button name="act" value="view" class="sec" formtarget="_blank">תצוגה מקדימה (כל הבחירה)</button> <button name="act" value="dlpdf" class="sec">הורדת PDF אחד</button> <button name="act" value="dl" class="sec">הורדה (ZIP – קובץ לכל תלמידה)</button> <button name="act" value="recips" class="sec">בדיקת נמענים</button> <button name="act" value="send" data-confirm="לשלוח את המסמך במייל לכל התלמידות שנבחרו, לכתובת השמורה בכרטיס של כל אחת?">שליחה במייל לכתובות שבמערכת</button></p>
+  <p class="mu">התצוגה המקדימה וה-PDF האחד כוללים עמוד לכל תלמידה בבחירה. השליחה במייל (לכיתה / שכבה / כולן) שולחת לכל תלמידה מסמך משלה לכתובת השמורה בכרטיס שלה, ויוצאת ברקע. תלמידות בלי כתובת מדולגות ומוצגות ברשימה, ואפשר לבדוק מראש מי מקבלת ומי חסרה דרך "בדיקת נמענים".</p>
 </form>
+<?php if (is_array($recips)): $noem = array_filter($recips, fn($r) => !filter_var(trim((string)$r['email']), FILTER_VALIDATE_EMAIL)); ?>
+<div class="card"><h2>נמענים (<?= count($recips) ?>)</h2><p><?= count($recips) - count($noem) ?> תלמידות עם כתובת מייל שמורה<?= $noem ? ', <b>' . count($noem) . '</b> בלי כתובת (לא יישלח להן)' : '' ?>.</p>
+  <div class="sc"><table><tr><th>תלמידה</th><th>כיתה</th><th>מייל שמור</th></tr><?php foreach ($recips as $r): $okm = filter_var(trim((string)$r['email']), FILTER_VALIDATE_EMAIL); ?><tr<?= $okm ? '' : ' class="unm"' ?>><td><a href="student.php?id=<?= (int)$r['id'] ?>&amp;open=docgen"><?= e($r['name']) ?></a></td><td><?= e(class_label((string)$r['grade'], (string)$r['cls'])) ?></td><td dir="ltr"><?= $okm ? e($r['email']) : '— אין —' ?></td></tr><?php endforeach; ?></table></div></div>
+<?php endif; ?>
+
+<form method="post" class="card docf" id="general"><?= csrf_field() ?>
+  <h2>מסמך כללי (ללא שיוך לתלמידה)</h2>
+  <p class="mu">מכתב או אישור חופשי עם חתימה אוטומטית, שנשמר בהיסטוריה של המסמכים הכלליים ואפשר להוריד או לשלוח במייל לכל כתובת.</p>
+  <div class="fg"><label>כותרת<input name="title" maxlength="150"></label>
+  <label>יישור<select name="align"><option value="r">לימין</option><option value="c">למרכז</option></select></label>
+  <label>מייל לשליחה<input type="email" name="email" maxlength="150" dir="ltr"></label></div>
+  <label>תוכן (כל שורה היא פסקה)<textarea name="body" rows="8"></textarea></label>
+  <label class="chk"><input type="checkbox" name="signed" value="1" checked> חתימה וחותמת אוטומטית</label>
+  <label class="chk"><input type="checkbox" name="save_tpl" value="1"> לשמור גם כתבנית לשימוש חוזר</label>
+  <p class="bar"><button name="act" value="gen_save">יצירה ושמירה בהיסטוריה</button> <button name="act" value="gen_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="gen_send" class="sec">יצירה ושליחה במייל</button></p>
+</form>
+<?php $gen = doc_general(40); if ($gen): ?>
+<div class="card"><h2>היסטוריית מסמכים כלליים</h2><div class="sc"><table><tr><th>תאריך</th><th>מסמך</th><th>הופק ע"י</th><th>נשלח אל</th><th></th></tr>
+  <?php foreach ($gen as $h): ?><tr><td class="n"><?= e(doc_hist_date($h)) ?></td><td><?= e($h['name']) ?></td><td><?= e($h['created_by']) ?></td><td dir="ltr"><?= e($h['sent_to']) ?></td>
+    <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="hid" value="<?= (int)$h['id'] ?>"><button name="act" value="h_view" class="sec" formtarget="_blank">צפייה</button> <button name="act" value="h_dl" class="sec">הורדה</button>
+      <input type="email" name="email" maxlength="150" dir="ltr" aria-label="מייל לשליחה" placeholder="מייל"> <button name="act" value="h_send" class="sec">שליחה</button></form></td></tr><?php endforeach; ?></table></div></div>
+<?php endif; ?>
 
 <div class="card"><h2>תבניות מסמכים</h2>
   <table><tr><th>שם</th><th>כותרת</th><th>חתימה</th><th></th></tr>

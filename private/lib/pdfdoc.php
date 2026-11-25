@@ -95,7 +95,7 @@ final class PdfDoc {
     for ($y = 0; $y < $h; $y++) for ($x = 0; $x < $w; $x++) { $c = imagecolorat($im, $x, $y); $rgb .= chr(($c >> 16) & 255) . chr(($c >> 8) & 255) . chr($c & 255); $al .= chr(255 - (int)round((($c >> 24) & 127) * 255 / 127)); }
     imagedestroy($im); return $cache[$path] = ['w' => $w, 'h' => $h, 'rgb' => gzcompress($rgb, 6), 'a' => gzcompress($al, 6)];
   }
-  public function addPage(): void { $this->pages[] = ['c' => '', 'sig' => false]; $this->cur = count($this->pages) - 1; if ($this->bgJpg !== '') $this->pages[$this->cur]['c'] .= sprintf("q %.2F 0 0 %.2F 0 0 cm /Bg Do Q\n", self::W, self::H); }
+  public function addPage(bool $sig = false): void { $this->pages[] = ['c' => '', 'sig' => $sig]; $this->cur = count($this->pages) - 1; if ($this->bgJpg !== '') $this->pages[$this->cur]['c'] .= sprintf("q %.2F 0 0 %.2F 0 0 cm /Bg Do Q\n", self::W, self::H); }
   public function width(string $text, float $size, string $f = 'r'): float { return $this->fonts[$f]->width(pdf_bidi($text), $size); }
   /** שבירת טקסט לשורות לפי רוחב. */
   public function wrap(string $text, float $size, float $maxW, string $f = 'r'): array {
