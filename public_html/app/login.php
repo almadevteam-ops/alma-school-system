@@ -29,8 +29,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // עוגיית ההמתנה לקוד נשמרת ל-15 דקות גם אם האפליקציה/הדפדפן נסגרים בזמן שהמשתמשת עוברת למייל לקחת את הקוד
         setcookie(session_name(), session_id(), ['expires' => time() + 900, 'path' => '/', 'secure' => is_https(), 'httponly' => true, 'samesite' => 'Lax']);
         if (($row['mfa_method'] ?? 'app') === 'email') {
+          session_write_close();   // שומרים את מצב ההמתנה לקוד לפני שליחת המייל (שיכולה להימשך כמה שניות)
           [$sent, $why] = mfa_send_code($row, true);
-          if (!$sent) { unset($_SESSION['p2']); $err = $why; goto render; }
+          if (!$sent) { session_start(); unset($_SESSION['p2']); $err = $why; goto render; }
         }
         redirect('login2.php');
       }

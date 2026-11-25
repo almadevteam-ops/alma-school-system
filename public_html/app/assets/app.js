@@ -920,6 +920,12 @@
   });
 })();
 
+// כניסה: מונע לחיצה כפולה על "כניסה" / "אישור" (שליחת קוד במייל לוקחת כמה שניות)
+(function () {
+  var f = document.querySelector('.card.login form'); if (!f) return;
+  f.addEventListener('submit', function () { var b = f.querySelector('button:not(.sec)'); if (b) setTimeout(function () { b.disabled = true; }, 0); });
+})();
+
 // תנועות: כשנפתחת עריכה, השורה בעריכה נגללת למרכז המסך
 (function () { var r = document.getElementById('edrow'); if (r && r.scrollIntoView) r.scrollIntoView({ block: 'center' }); })();
 
