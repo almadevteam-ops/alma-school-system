@@ -53,6 +53,7 @@ require_once __DIR__ . '/mfa_email.php';
 require_once __DIR__ . '/backup.php';
 require_once __DIR__ . '/backup_delta.php';
 require_once __DIR__ . '/budget.php';
+require_once __DIR__ . '/budget_pay.php';
 require_once __DIR__ . '/charge_import.php';
 require_once __DIR__ . '/reminders.php';
 require_once __DIR__ . '/docs.php';
@@ -220,7 +221,7 @@ function page_head(string $title, bool $nav = true): void {
     if ($u['role'] === 'admin') {
       $adm = ['import.php' => 'ייבוא', 'users.php' => 'משתמשים', 'audit.php' => 'יומן פעולות', 'archive.php' => 'ארכיון', 'geo.php' => 'ערים ורחובות', 'settings.php' => 'הגדרות', 'release_notes.php' => 'מה חדש'];
       $mnt = ['backups.php' => 'גיבויים', 'backup_log.php' => 'יומן גיבויים', 'health.php' => 'בדיקת מערכת'];
-      $bud = ['budget.php' => 'סיכום', 'budget_tx.php' => 'תנועות', 'budget_cats.php' => 'קטגוריות וכללים'];
+      $bud = ['budget.php' => 'סיכום', 'budget_tx.php' => 'תנועות', 'budget_pay.php' => 'לתשלום', 'budget_cats.php' => 'קטגוריות וכללים'];
       foreach ([['תקציב', 'budget', $bud], ['ניהול', 'admin', $adm], ['תחזוקה', 'maint', $mnt]] as [$tt, $ik, $set]) {
         echo '<details class="menu' . (isset($set[$on]) ? ' on' : '') . '"><summary title="' . $tt . '">' . $ic($icons[$ik]) . '<span>' . $tt . '</span></summary><div class="dd">';
         foreach ($set as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';

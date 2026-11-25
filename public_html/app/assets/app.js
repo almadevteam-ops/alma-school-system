@@ -750,5 +750,152 @@
   });
 })();
 
+// שמירה אוטומטית בטבלת תנועות התקציב: כל שינוי בקטגוריה / חשבונית / קבלה נשמר מיד בשרת
+(function () {
+  var form = document.querySelector('form.autosave'); if (!form) return;
+  var st = form.querySelector('.asv'), base = st ? st.textContent : '', timer = null;
+  function say(t, cls) { if (!st) return; st.textContent = t; st.className = 'asv ' + (cls || 'mu'); clearTimeout(timer); if (cls !== 'er') timer = setTimeout(function () { st.textContent = base; st.className = 'asv mu'; }, 6000); }
+  form.addEventListener('submit', function (e) { e.preventDefault(); });
+  function post(body) { return fetch(form.getAttribute('action') || location.href, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }); }
+  function upload(inp) {
+    var box = inp.closest('.bdu'), f = inp.files && inp.files[0]; if (!f) return;
+    var fd = new FormData(); fd.set('_t', form.querySelector('[name=_t]').value); fd.set('act', 'doc_up'); fd.set('id', box.dataset.tx); fd.set('k', box.dataset.k); fd.set('file', f);
+    say('מעלה את הקובץ…'); inp.disabled = true;
+    post(fd).then(function (x) {
+      inp.disabled = false; inp.value = ''; if (!x.ok || !x.j.ok) { say('ההעלאה נכשלה: ' + ((x.j && x.j.msg) || 'נסי שוב'), 'er'); return; }
+      var t = document.createElement('span'); t.innerHTML = x.j.html; while (t.firstChild) box.insertBefore(t.firstChild, box.querySelector('.bdup'));
+      var cb = box.closest('td').querySelector('input[type=checkbox]'); if (cb) cb.checked = true; say('✓ הקובץ הועלה ונשמר', 'ok');
+    }).catch(function () { inp.disabled = false; say('ההעלאה נכשלה: אין חיבור לשרת.', 'er'); });
+  }
+  form.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.bdx'); if (!b) return; e.preventDefault();
+    if (!window.confirm('להסיר את הקובץ?')) return;
+    var fd = new FormData(); fd.set('_t', form.querySelector('[name=_t]').value); fd.set('act', 'doc_del'); fd.set('doc', b.dataset.doc);
+    post(fd).then(function (x) { if (x.ok && x.j.ok) { b.closest('.bdf').remove(); say('✓ הקובץ הוסר', 'ok'); } else say('ההסרה נכשלה', 'er'); }).catch(function () { say('ההסרה נכשלה: אין חיבור לשרת.', 'er'); });
+  });
+  form.addEventListener('change', function (e) {
+    var el = e.target, m = /^(cat|inv|rec|paid)\[(\d+)\]$/.exec(el.name || '');
+    if (el.type === 'file' && el.closest('.bdu')) { upload(el); return; }
+    if (!m) return;
+    var f = m[1] === 'cat' ? 'c' : m[1], v = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value, row = el.closest('tr');
+    var learn = form.querySelector('[name=learn]'), body = new URLSearchParams();
+    body.set('_t', form.querySelector('[name=_t]').value); body.set('act', 'qsave'); body.set('id', m[2]); body.set('f', f); body.set('v', v); if (learn && learn.checked) body.set('learn', '1');
+    if (m[1] === 'inv' || m[1] === 'rec') { var bu = el.closest('td') && el.closest('td').querySelector('.bdu'); if (bu) bu.classList.toggle('on', el.checked); }
+    el.disabled = true; say('שומר…');
+    fetch(form.getAttribute('action') || location.href, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        el.disabled = false; if (!x.ok || !x.j.ok) { say('השמירה נכשלה: ' + ((x.j && x.j.msg) || 'נסי לרענן את הדף'), 'er'); return; }
+        if (f === 'c' && row) row.classList.toggle('unm', v === '');
+        say('✓ ' + x.j.msg + (x.j.applied ? ' (לרענון הרשימה: ' : ''), 'ok');
+        if (x.j.applied) { var a = document.createElement('a'); a.href = location.href; a.textContent = 'רענון'; st.appendChild(a); st.appendChild(document.createTextNode(')')); }
+      }).catch(function () { el.disabled = false; say('השמירה נכשלה: אין חיבור לשרת. נסי שוב.', 'er'); });
+  });
+})();
+
 // רישום Service Worker – מאפשר "התקנה" של המערכת כאפליקציה בטלפון
+// תקציב › לתשלום: זיהוי אוטומטי של חשבונית (PDF או תמונה) בדפדפן – ספק, מספר עוסק, תאריך, סכום, מספר חשבונית ופרטי בנק. הכול ניתן לתיקון לפני שמירה.
+(function () {
+  var form = document.querySelector('form[data-inv]'); if (!form) return;
+  var fi = document.getElementById('inv-file'), msg = document.getElementById('inv-msg'), BASE = (document.currentScript && document.currentScript.src ? document.currentScript.src.replace(/app\.js(\?.*)?$/, '') : 'assets/');
+  var ld = {}, wk = null;
+  function say(t) { if (msg) msg.textContent = t; }
+  function load(src) { return ld[src] || (ld[src] = new Promise(function (res, rej) { var s = document.createElement('script'); s.src = BASE + src; s.onload = res; s.onerror = function () { rej(new Error('טעינה נכשלה')); }; document.head.appendChild(s); })); }
+  function worker() {
+    return wk || (wk = load('vendor/tess/tesseract.min.js').then(function () {
+      say('טוען את מנוע הקריאה (בפעם הראשונה לוקח כמה שניות)…');
+      return window.Tesseract.createWorker('heb+eng', 1, { workerPath: BASE + 'vendor/tess/worker.min.js', corePath: BASE + 'vendor/tess/', langPath: BASE + 'vendor/tess/lang/', gzip: false, workerBlobURL: false });
+    }).then(function (w) { return w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' }).then(function () { return w; }); }));
+  }
+  function clean(t) { return t.replace(/[‎‏‪-‮⁦-⁩]/g, ''); }
+  function pdfText(file) {
+    return load('vendor/pdf/pdf.min.js').then(function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + 'vendor/pdf/pdf.worker.min.js'; return file.arrayBuffer(); })
+      .then(function (b) { return window.pdfjsLib.getDocument({ data: b, isEvalSupported: false }).promise; }).then(function (pdf) {
+        var out = [], chain = Promise.resolve();
+        for (var p = 1; p <= Math.min(pdf.numPages, 3); p++) (function (n) {
+          chain = chain.then(function () { return pdf.getPage(n); }).then(function (pg) { return pg.getTextContent().then(function (tc) { return { pg: pg, tc: tc }; }); }).then(function (o) {
+            var it = o.tc.items.filter(function (i) { return i.str && i.str.trim() !== ''; }).map(function (i) { return { s: clean(i.str), x: i.transform[4], y: i.transform[5] }; });
+            it.sort(function (a, b) { return Math.abs(a.y - b.y) > 3 ? b.y - a.y : b.x - a.x; });
+            var lines = [], cur = null, cy = null;
+            it.forEach(function (i) { if (cy === null || Math.abs(i.y - cy) > 3) { cur = []; lines.push(cur); cy = i.y; } cur.push(i.s); });
+            out.push(lines.map(function (l) { return l.join(' '); }).join('\n'));
+          });
+        })(p);
+        return chain.then(function () { return out.join('\n'); });
+      });
+  }
+  function ocr(file) {
+    var img = file.type && file.type.indexOf('image') === 0 ? createImageBitmap(file) : load('vendor/pdf/pdf.min.js').then(function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + 'vendor/pdf/pdf.worker.min.js'; return file.arrayBuffer(); }).then(function (b) { return window.pdfjsLib.getDocument({ data: b, isEvalSupported: false }).promise; }).then(function (pdf) { return pdf.getPage(1); }).then(function (pg) {
+      var v1 = pg.getViewport({ scale: 1 }), v = pg.getViewport({ scale: 2200 / Math.max(v1.width, v1.height) }), c = document.createElement('canvas'); c.width = Math.round(v.width); c.height = Math.round(v.height);
+      return pg.render({ canvasContext: c.getContext('2d'), viewport: v }).promise.then(function () { return c; });
+    });
+    return Promise.all([img, worker()]).then(function (r) {
+      var src = r[0], k = Math.min(1, 2200 / Math.max(src.width, src.height)), c = document.createElement('canvas'); c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
+      var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(src, 0, 0, c.width, c.height);
+      say('מזהה טקסט מהתמונה…'); return r[1].recognize(c);
+    }).then(function (res) { return clean(res.data.text || ''); });
+  }
+  function num(s) { s = s.replace(/[^\d.,]/g, ''); if (/,\d{2}$/.test(s) && s.indexOf('.') < 0) s = s.replace(/\./g, '').replace(',', '.'); else s = s.replace(/,/g, ''); var n = parseFloat(s); return isNaN(n) ? null : n; }
+  function amounts(l) { var m = l.match(/\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2}/g) || []; return m.map(num).filter(function (n) { return n !== null; }); }
+  function iso(d, m, y) { y = +y; if (y < 100) y += 2000; d = +d; m = +m; if (m < 1 || m > 12 || d < 1 || d > 31 || y < 2000 || y > 2100) return ''; return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2); }
+  function extract(t) {
+    var lines = t.split(/\n/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean), r = {}, flat = lines.join('\n');
+    var m = flat.match(/(?:עוסק(?: מורשה)?|ע\.?\s?מ\.?|ח\.?\s?פ\.?|מס'? ?עוסק|VAT|Tax ?ID)[^\d\n]{0,18}(\d{8,9})/i) || flat.match(/(\d{8,9})[^\d\n]{0,12}(?:עוסק|ע\.מ|ח\.פ)/);
+    if (m) r.biz = m[1];
+    m = flat.match(/(?:חשבונית(?: מס)?(?: ?\/ ?קבלה)?|קבלה|Invoice)[^\d\n]{0,14}(?:מס(?:'|פר)?\.?|No\.?|#)?\s*:?\s*(\d{3,12})/i); if (m && m[1] !== r.biz) r.ref = m[1];
+    var ds = []; (flat.match(/\b\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\b/g) || []).forEach(function (x) { var p = x.split(/[\/.\-]/), v = iso(p[0], p[1], p[2]); if (v) ds.push(v); });
+    if (ds.length) r.date = ds[0]; if (ds.length > 1) { var due = lines.filter(function (l) { return /לתשלום עד|תאריך (?:פירעון|תשלום)|שוטף|Due/i.test(l); }); if (due.length) { var dm = due[0].match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/); if (dm) r.due = iso(dm[1], dm[2], dm[3]); } }
+    var best = null; lines.forEach(function (l) { if (/(?:סה"?כ|סך הכל|סכום)[^\n]*(?:לתשלום|כולל|מע"?מ)|לתשלום|total|amount due/i.test(l) && !/לפני מע/.test(l)) amounts(l).forEach(function (a) { if (best === null || a > best) best = a; }); });
+    if (best === null) { var all = []; lines.forEach(function (l) { all = all.concat(amounts(l)); }); if (all.length) best = Math.max.apply(null, all); }
+    if (best !== null) r.total = best;
+    var skip = /חשבונית|קבלה|מקור|העתק|עותק|תאריך|טלפון|טל[׳'.]|פקס|כתובת|עוסק|ח\.פ|דף|לכבוד|לקוח|www|@|http|invoice|receipt|original|סה"?כ|מע"?מ|לתשלום|תיאור|בנק|סניף|חשבון|פירוט|\d{3,}/i, sup = '', top = lines.slice(0, 14);
+    top.forEach(function (l) { if (!sup && /בע["״'']?מ|ltd|inc\b|שותפות|עמותה|מלכ"ר/i.test(l) && l.length <= 70) sup = l.replace(/\s*(?:עוסק|ח\.?פ).*$/, '').trim(); });
+    for (var i = 0; i < top.length && !sup; i++) { if (!skip.test(top[i]) && /[\u05d0-\u05eaA-Za-z]{2,}/.test(top[i]) && top[i].length <= 60) sup = top[i]; }
+    if (sup) r.supplier = sup;
+    m = flat.match(/בנק[^\d\n]{0,10}(\d{2,3})/); if (m) r.bank = m[1]; m = flat.match(/סניף[^\d\n]{0,8}(\d{3,4})/); if (m) r.branch = m[1]; m = flat.match(/(?:ח-ן|חשבון|ח\.ן|חן|Account)[^\d\n]{0,10}(\d{5,12})/i); if (m) r.account = m[1];
+    return r;
+  }
+  function setv(n, v) { var el = form.elements[n]; if (el && v !== undefined && v !== '' && v !== null && String(el.value).trim() === '') { el.value = v; return true; } return false; }
+  function suggest(r) {
+    var fd = new FormData(); fd.append('_t', form.elements['_t'].value); fd.append('act', 'suggest'); fd.append('supplier', form.elements['supplier'].value); fd.append('biz_id', form.elements['biz_id'].value);
+    return fetch(form.getAttribute('action') || location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (x) { return x.json(); }).then(function (j) {
+      if (!j || !j.ok) return; setv('category', j.category); setv('bank', j.bank); setv('branch', j.branch); setv('account', j.account);
+    }).catch(function () {});
+  }
+  if (!fi) return;
+  fi.addEventListener('change', function () {
+    var f = fi.files && fi.files[0]; if (!f) return; say('קורא את החשבונית…');
+    var isPdf = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name);
+    (isPdf ? pdfText(f) : Promise.resolve('')).then(function (t) { var r = extract(t); return (r.total !== undefined || r.biz) ? r : ocr(f).then(extract); }).then(function (r) {
+      var got = 0;
+      got += setv('supplier', r.supplier) ? 1 : 0; got += setv('biz_id', r.biz) ? 1 : 0; got += setv('ref', r.ref) ? 1 : 0; got += setv('inv_date', r.date) ? 1 : 0; got += setv('due_date', r.due) ? 1 : 0; got += setv('total', r.total !== undefined ? r.total.toFixed(2) : '') ? 1 : 0;
+      setv('bank', r.bank); setv('branch', r.branch); setv('account', r.account);
+      return suggest(r).then(function () { say(got ? 'הפרטים זוהו אוטומטית – נא לבדוק ולתקן לפי הצורך, ואז לבחור אם שולמה.' : 'לא הצלחתי לזהות פרטים בקובץ. אפשר למלא ידנית.'); });
+    }).catch(function () { say('הזיהוי האוטומטי נכשל. אפשר למלא ידנית.'); });
+  });
+})();
+
+// תקציב › לתשלום: שמירה אוטומטית של סימון למס"ב וסכום לתשלום, ופעולות על חשבונית
+(function () {
+  var f = document.querySelector('form.payq'); if (!f) return;
+  var st = f.querySelector('.asv');
+  function say(t, ok) { if (st) { st.textContent = t; st.className = 'asv ' + (ok ? 'ok' : 'er'); } }
+  function post(id, k, v) {
+    var fd = new FormData(); fd.append('_t', f.elements['_t'].value); fd.append('act', 'qs'); fd.append('id', id); fd.append('f', k); fd.append('v', v);
+    return fetch(location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json().catch(function () { return { ok: false, msg: 'שגיאה' }; }); }).then(function (j) { say(j.ok ? 'נשמר ✓' : (j.msg || 'השמירה נכשלה'), j.ok); return j; }).catch(function () { say('השמירה נכשלה', false); });
+  }
+  f.addEventListener('change', function (e) {
+    var el = e.target, m = /^(mv|pn)\[(\d+)\]$/.exec(el.name || ''); if (!m) return;
+    post(m[2], m[1] === 'mv' ? 'masav' : 'pay_now', m[1] === 'mv' ? (el.checked ? '1' : '0') : el.value).then(function (j) { if (j && j.ok && m[1] === 'mv') setTimeout(function () { location.reload(); }, 400); });
+  });
+  var a = document.getElementById('payact');
+  f.addEventListener('submit', function (e) { e.preventDefault(); });
+  f.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.payb') : null; if (!b || !a) return;
+    if (b.getAttribute('data-confirm') && !window.confirm(b.getAttribute('data-confirm'))) return;
+    var id = b.getAttribute('data-id'), act = b.getAttribute('data-act'), pn = f.elements['pn[' + id + ']'];
+    a.elements['act'].value = act; a.elements['id'].value = id; a.elements['amount'].value = pn ? pn.value : ''; a.submit();
+  });
+})();
+
 (function () { if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).catch(function () {}); }); })();

@@ -311,3 +311,13 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--bg) u
 .docf textarea{width:100%;box-sizing:border-box;min-height:9em}
 .docf label{display:block}
 .docf .fg label{display:block}
+
+/* תקציב: חשבוניות, קבלות ולתשלום */
+.bdc{white-space:nowrap}.bdu{display:none;margin-top:4px;font-size:.85em}.bdu.on{display:block}
+.bdf{display:inline-flex;gap:4px;align-items:center;margin:0 0 2px 4px;background:#eef4e6;border-radius:6px;padding:1px 6px}
+.bdx{background:none;border:0;color:#a33;cursor:pointer;padding:0 2px;font-size:1.1em;line-height:1}
+.bdup{display:inline-block;cursor:pointer;color:#5a2d6b;text-decoration:underline}
+.asv.ok{color:#2f6b12}.asv.er{color:#b00020;font-weight:700}
+.pay-sum{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0}.pay-sum b{font-size:1.15em}
+.pay-in{width:7.5em}.pay-miss{color:#b00020;font-size:.85em}
+.payq .inl{flex-wrap:wrap;gap:6px}.payq td .pay-in{max-width:110px}
