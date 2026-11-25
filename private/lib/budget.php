@@ -63,8 +63,7 @@ function budget_date(string $v): string {
 }
 function budget_unit_for(string $unit, string $cat): string {
   $units = budget_units(); if ($unit !== '' && in_array($unit, $units, true)) return $unit;
-  if ($cat !== '' && in_array($cat, $units, true)) return $cat;
-  return $units[0];
+  return in_array('עלמא', $units, true) ? 'עלמא' : $units[0];   // ברירת מחדל: עלמא. יחידה אחרת נבחרת ידנית בשורה
 }
 function budget_cat_ensure(string $c): void { if ($c !== '') db()->prepare('INSERT IGNORE INTO budget_cats (name) VALUES (?)')->execute([mb_substr($c, 0, 100)]); }
 

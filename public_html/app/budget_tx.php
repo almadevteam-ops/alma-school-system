@@ -87,12 +87,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   } elseif ($act === 'qsave') {   // שמירה אוטומטית של שורה אחת (נקרא מהדפדפן בכל שינוי בקטגוריה / חשבונית / קבלה)
     header('Content-Type: application/json; charset=utf-8'); $id = (int)($_POST['id'] ?? 0); $fld = (string)($_POST['f'] ?? ''); $val = (string)($_POST['v'] ?? '');
     $q = $pdo->prepare('SELECT id, name, category, has_invoice, has_receipt FROM budget_tx WHERE id = ?'); $q->execute([$id]); $r = $q->fetch();
-    if (!$r || !in_array($fld, ['c', 'inv', 'rec', 'paid'], true) || ($fld === 'c' && $val !== '' && !in_array($val, $cats, true))) { http_response_code(422); echo json_encode(['ok' => false, 'msg' => 'התנועה או הערך לא תקינים']); exit; }
+    if (!$r || !in_array($fld, ['c', 'inv', 'rec', 'paid', 'u'], true) || ($fld === 'c' && $val !== '' && !in_array($val, $cats, true)) || ($fld === 'u' && !in_array($val, $units, true))) { http_response_code(422); echo json_encode(['ok' => false, 'msg' => 'התנועה או הערך לא תקינים']); exit; }
     $out = ['ok' => true, 'learned' => 0, 'applied' => 0, 'generic' => false, 'msg' => 'נשמר'];
     if ($fld === 'c') {
       $pdo->prepare('UPDATE budget_tx SET category = ?, updated_at = ? WHERE id = ?')->execute([$val, now(), $id]); audit('budget_save', 'budget', (string)$id, 'קטגוריה: ' . $val);
       if ($r['category'] === '' && $val !== '' && !empty($_POST['learn'])) { $n2 = budget_learn((string)$r['name'], $val); if ($n2 >= 0) { $out['learned'] = 1; $out['applied'] = $n2; } elseif ($n2 === -2) $out['generic'] = true; }
       $out['msg'] = $out['learned'] ? 'נשמר, והמערכת למדה כלל חדש לפי שם הספק' . ($out['applied'] ? ' ושייכה עוד ' . $out['applied'] . ' תנועות דומות' : '') : ($out['generic'] ? 'נשמר (שם כללי של הבנק, לא נלמד ככלל)' : 'נשמר');
+    } elseif ($fld === 'u') {
+      $pdo->prepare('UPDATE budget_tx SET unit = ?, updated_at = ? WHERE id = ?')->execute([$val, now(), $id]); audit('budget_save', 'budget', (string)$id, 'יחידה: ' . $val);
     } else {
       $col = ['inv' => 'has_invoice', 'rec' => 'has_receipt', 'paid' => 'paid'][$fld]; $pdo->prepare("UPDATE budget_tx SET $col = ?, updated_at = ? WHERE id = ?")->execute([$val === '1' ? 1 : 0, now(), $id]);
     }
@@ -227,7 +229,7 @@ page_head('תקציב – תנועות');
 <?php foreach ($rows as $r): $id = (int)$r['id']; ?>
 <tr<?= $r['category'] === '' ? ' class="unm"' : '' ?>><td class="n"><?= e(date('d/m/Y', strtotime($r['tx_date']))) ?><input type="hidden" name="ids[]" value="<?= $id ?>"></td><td><?= $r['is_income'] ? e($r['name']) : '<a href="budget_suppliers.php?y=all&amp;s=' . rawurlencode(trim($r['name'])) . '">' . e($r['name']) . '</a>' ?></td><td><?= e($r['descr']) ?></td><td><?= e($r['ref']) ?></td>
 <td class="n<?= $r['is_income'] ? ' ok' : '' ?>"><bdi dir="ltr"><?= $r['is_income'] ? '+' : '' ?><?= e(budget_money($r['amount'])) ?></bdi></td>
-<td><select name="cat[<?= $id ?>]"><?= $opt($cats, $r['category'], '— לא משויך —') ?></select></td><td><?= e($r['unit']) ?></td>
+<td><select name="cat[<?= $id ?>]"><?= $opt($cats, $r['category'], '— לא משויך —') ?></select></td><td><select name="unit[<?= $id ?>]" aria-label="יחידה"><?= $opt($units, (string)$r['unit']) ?></select></td>
 <?php foreach (['inv' => ['has_invoice', 'חשבונית'], 'rec' => ['has_receipt', 'קבלה']] as $k => [$col, $lb]): ?><td class="bdc"><input type="checkbox" name="<?= $k ?>[<?= $id ?>]" value="1"<?= $r[$col] ? ' checked' : '' ?> aria-label="<?= $lb ?>"><?php if ($hasPay): ?><span class="bdu<?= $r[$col] ? ' on' : '' ?>" data-tx="<?= $id ?>" data-k="<?= $k ?>"><?= bdoc_html($bdocs[$id][$k] ?? []) ?><label class="bdup">+ העלאה<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" hidden></label></span><?php endif; ?></td><?php endforeach; ?>
 <?php if ($hasPay): ?><td><?php if (!$r['is_income']): ?><input type="checkbox" name="paid[<?= $id ?>]" value="1"<?= $r['paid'] ? ' checked' : '' ?> aria-label="שולם"><?php endif; ?></td><?php endif; ?>
 <td class="n"><a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'edit=' . $id) ?>#edrow">עריכה</a> <button class="dg" name="del" value="<?= $id ?>" data-confirm="למחוק את התנועה?" formnovalidate>מחיקה</button></td></tr>

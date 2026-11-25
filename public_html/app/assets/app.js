@@ -774,10 +774,10 @@
     post(fd).then(function (x) { if (x.ok && x.j.ok) { b.closest('.bdf').remove(); say('✓ הקובץ הוסר', 'ok'); } else say('ההסרה נכשלה', 'er'); }).catch(function () { say('ההסרה נכשלה: אין חיבור לשרת.', 'er'); });
   });
   form.addEventListener('change', function (e) {
-    var el = e.target, m = /^(cat|inv|rec|paid)\[(\d+)\]$/.exec(el.name || '');
+    var el = e.target, m = /^(cat|inv|rec|paid|unit)\[(\d+)\]$/.exec(el.name || '');
     if (el.type === 'file' && el.closest('.bdu')) { upload(el); return; }
     if (!m) return;
-    var f = m[1] === 'cat' ? 'c' : m[1], v = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value, row = el.closest('tr');
+    var f = m[1] === 'cat' ? 'c' : (m[1] === 'unit' ? 'u' : m[1]), v = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value, row = el.closest('tr');
     var learn = form.querySelector('[name=learn]'), body = new URLSearchParams();
     body.set('_t', form.querySelector('[name=_t]').value); body.set('act', 'qsave'); body.set('id', m[2]); body.set('f', f); body.set('v', v); if (learn && learn.checked) body.set('learn', '1');
     if (m[1] === 'inv' || m[1] === 'rec') { var bu = el.closest('td') && el.closest('td').querySelector('.bdu'); if (bu) bu.classList.toggle('on', el.checked); }
