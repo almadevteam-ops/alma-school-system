@@ -321,3 +321,7 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--bg) u
 .pay-sum{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0}.pay-sum b{font-size:1.15em}
 .pay-in{width:7.5em}.pay-miss{color:#b00020;font-size:.85em}
 .payq .inl{flex-wrap:wrap;gap:6px}.payq td .pay-in{max-width:110px}
+.bdc{white-space:normal;width:130px;max-width:130px;min-width:0}.bdc .bdu{max-width:130px}
+.bdc .bdf{display:flex;max-width:100%;box-sizing:border-box;margin:0 0 3px}
+.bdc .bdf a{display:block;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+form.autosave td select{max-width:150px}form.autosave td{padding-inline:6px}
