@@ -283,7 +283,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
       <label class="chk"><input type="checkbox" name="signed" value="1" checked> חתימה וחותמת אוטומטית</label>
       <label class="chk"><input type="checkbox" name="save_tpl" value="1"> לשמור גם כתבנית לשימוש חוזר</label>
       <label>מייל לשליחה (המייל השמור בכרטיס, אפשר לשנות)<input type="email" name="email" maxlength="150" dir="ltr" value="<?= e((string)($row['email'] ?? '')) ?>" placeholder="כתובת מייל"></label>
-      <p class="bar"><button name="act" value="manual">יצירה ושמירה בהיסטוריה</button> <button name="act" value="manual_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="manual_send" class="sec">יצירה ושליחה במייל</button></p>
+      <p class="bar"><button name="act" value="manual_view" class="sec" formtarget="_blank" formnovalidate>תצוגה מקדימה</button> <button name="act" value="manual">יצירה ושמירה בהיסטוריה</button> <button name="act" value="manual_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="manual_send" class="sec">יצירה ושליחה במייל</button></p>
     </form>
   </details>
   <?php if ($dgh): ?><h3>היסטוריית מסמכים</h3><div class="sc"><table><tr><th>תאריך</th><th>מסמך</th><th>הופק ע"י</th><th>נשלח אל</th><th></th></tr>

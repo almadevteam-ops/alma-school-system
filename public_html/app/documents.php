@@ -19,14 +19,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       else { db()->prepare('INSERT INTO doc_templates (name,title,body,align,signed,builtin,created_at,updated_at) VALUES (?,?,?,?,?,0,?,?)')->execute([$name, $title, $body, $al, $sg, now(), now()]); $id = (int)db()->lastInsertId(); audit('doc_tpl_add', 'doc', (string)$id, $name); }
       $msg = 'התבנית "' . $name . '" נשמרה.';
     }
+  } elseif ($act === 'tpl_view') {   // תצוגה מקדימה של תבנית (על תלמידה לדוגמה) בלי לשמור
+    $tpl = ['name' => trim((string)($_POST['name'] ?? '')) ?: 'מסמך', 'title' => trim((string)($_POST['title'] ?? '')), 'body' => trim((string)($_POST['body'] ?? '')), 'align' => ($_POST['align'] ?? 'c') === 'r' ? 'r' : 'c', 'signed' => isset($_POST['signed']) ? 1 : 0];
+    $ex = db()->query("SELECT * FROM students WHERE status = 'active' AND archived_at IS NULL ORDER BY name LIMIT 1")->fetch() ?: doc_blank_student();
+    if ($tpl['title'] === '' || $tpl['body'] === '') $err = 'יש למלא כותרת ותוכן לתצוגה מקדימה.'; else $pdfOut(doc_pdf($tpl, $ex, doc_year_start()), 'תצוגה_מקדימה.pdf', true);
   } elseif ($act === 'tpl_del') {
     $t = doc_template((int)($_POST['tid'] ?? 0)); if ($t && !$t['builtin']) { db()->prepare('DELETE FROM doc_templates WHERE id = ?')->execute([$t['id']]); audit('doc_tpl_del', 'doc', (string)$t['id'], (string)$t['name']); $msg = 'התבנית נמחקה.'; } else $err = 'לא ניתן למחוק תבנית מובנית.';
-  } elseif (in_array($act, ['manual', 'manual_dl', 'manual_send', 'gen_save', 'gen_dl', 'gen_send'], true)) {   // מסמך ידני: לתלמידה (נשמר בהיסטוריה שלה) או כללי (ללא שיוך)
+  } elseif (in_array($act, ['manual', 'manual_dl', 'manual_send', 'manual_view', 'gen_save', 'gen_dl', 'gen_send', 'gen_view'], true)) {   // מסמך ידני: לתלמידה (נשמר בהיסטוריה שלה) או כללי (ללא שיוך)
     $general = str_starts_with($act, 'gen_'); $stu = $general ? doc_blank_student() : doc_student($sid);
     $title = mb_substr(trim((string)($_POST['title'] ?? '')), 0, 150); $body = trim((string)($_POST['body'] ?? '')); $to = trim((string)($_POST['email'] ?? ''));
     if (!$stu) $done(false, 'התלמידה לא נמצאה.'); elseif ($title === '' || $body === '') $done(false, 'יש למלא כותרת ותוכן למסמך.');
     else {
       $tpl = ['id' => 0, 'name' => $title, 'title' => $title, 'body' => $body, 'align' => ($_POST['align'] ?? 'r') === 'c' ? 'c' : 'r', 'signed' => isset($_POST['signed']) ? 1 : 0];
+      if (str_ends_with($act, '_view')) $pdfOut(doc_pdf($tpl, $stu, $ysel()), doc_filename($tpl, $stu), true);   // תצוגה מקדימה בלבד: לא נשמר בהיסטוריה
       if (isset($_POST['save_tpl'])) db()->prepare('INSERT INTO doc_templates (name,title,body,align,signed,builtin,created_at,updated_at) VALUES (?,?,?,?,?,0,?,?)')->execute([mb_substr($title, 0, 100), $title, $body, $tpl['align'], $tpl['signed'], now(), now()]);
       $ys = $ysel(); $hid = doc_record($stu, $tpl, $ys, $by); $h = doc_hist_get($hid); audit($general ? 'doc_general' : 'doc_manual', $general ? 'doc' : 'student', (string)($general ? $hid : $sid), $title);
       $saved = 'המסמך "' . $title . '" נשמר בהיסטוריה' . ($general ? ' של המסמכים הכלליים' : ' של התלמידה') . (isset($_POST['save_tpl']) ? ', וגם כתבנית' : '');
@@ -127,7 +132,7 @@ page_head('מסמכים');
   <label>תוכן (כל שורה היא פסקה)<textarea name="body" rows="8"></textarea></label>
   <label class="chk"><input type="checkbox" name="signed" value="1" checked> חתימה וחותמת אוטומטית</label>
   <label class="chk"><input type="checkbox" name="save_tpl" value="1"> לשמור גם כתבנית לשימוש חוזר</label>
-  <p class="bar"><button name="act" value="gen_save">יצירה ושמירה בהיסטוריה</button> <button name="act" value="gen_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="gen_send" class="sec">יצירה ושליחה במייל</button></p>
+  <p class="bar"><button name="act" value="gen_view" class="sec" formtarget="_blank" formnovalidate>תצוגה מקדימה</button> <button name="act" value="gen_save">יצירה ושמירה בהיסטוריה</button> <button name="act" value="gen_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="gen_send" class="sec">יצירה ושליחה במייל</button></p>
 </form>
 <?php $gen = doc_general(40); if ($gen): ?>
 <div class="card"><h2>היסטוריית מסמכים כלליים</h2><div class="sc"><table><tr><th>תאריך</th><th>מסמך</th><th>הופק ע"י</th><th>נשלח אל</th><th></th></tr>
@@ -144,7 +149,7 @@ page_head('מסמכים');
   <p><a class="btn" href="documents.php?edit=0#tpl">+ מסמך חדש (עריכה ידנית)</a></p>
 </div>
 <?php if ($edit >= 0 && ($edit === 0 || $et)): $t = $et ?: ['id' => 0, 'name' => '', 'title' => '', 'body' => '', 'align' => 'r', 'signed' => 1]; ?>
-<form method="post" class="card docf" id="tpl"><?= csrf_field() ?><input type="hidden" name="act" value="tpl_save"><input type="hidden" name="tid" value="<?= (int)$t['id'] ?>">
+<form method="post" class="card docf" id="tpl"><?= csrf_field() ?><input type="hidden" name="tid" value="<?= (int)$t['id'] ?>">
   <h2><?= $t['id'] ? 'עריכת תבנית' : 'מסמך חדש' ?></h2>
   <div class="fg"><label>שם התבנית (לרשימה)<input name="name" required maxlength="100" value="<?= e($t['name']) ?>"></label>
   <label>כותרת המסמך<input name="title" required maxlength="150" value="<?= e($t['title']) ?>"></label>
@@ -152,7 +157,7 @@ page_head('מסמכים');
   <label>תוכן המסמך (כל שורה היא פסקה)<textarea name="body" rows="9" required><?= e($t['body']) ?></textarea></label>
   <p class="mu">אפשר להכניס פרטי תלמידה אוטומטית: <?php foreach (DOC_PLACEHOLDERS as $k => $v) echo '<bdi dir="ltr"><code>' . e($k) . '</code></bdi> ' . e($v) . ' · '; ?></p>
   <label class="chk"><input type="checkbox" name="signed" value="1"<?= $t['signed'] ? ' checked' : '' ?>> חתימה וחותמת אוטומטית של ההנהלה</label>
-  <p class="bar"><button>שמירה</button> <a class="btn sec" href="documents.php">ביטול</a></p>
+  <p class="bar"><button name="act" value="tpl_save">שמירה</button> <button name="act" value="tpl_view" class="sec" formtarget="_blank" formnovalidate>תצוגה מקדימה</button> <a class="btn sec" href="documents.php">ביטול</a></p>
 </form>
 <?php endif; ?>
 
