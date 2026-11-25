@@ -204,6 +204,7 @@ $inline = $ed && in_array((int)$ed['id'], array_map('intval', array_column($rows
 page_head('תקציב – תנועות');
 ?>
 <h1>תקציב – תנועות</h1>
+<?= bpay_banner() ?>
 <?php if ($msg) echo '<p class="' . ($msg[0] ? 'ok' : 'er') . '">' . e($msg[1]) . '</p>'; ?>
 <details class="card" id="txform"<?= ($showForm && !$inline) ? ' open' : '' ?>><summary><b><?= $ed && !$inline ? 'עריכת תנועה' : 'הוספת הוצאה או הכנסה' ?></b></summary>
   <form method="post" class="bar" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="<?= $ed && !$inline ? 'update' : 'add' ?>"><?php if ($ed && !$inline) echo '<input type="hidden" name="id" value="' . (int)$ed['id'] . '">'; ?>

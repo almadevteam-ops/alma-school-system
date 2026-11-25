@@ -67,6 +67,7 @@ if ($name !== ''):
   $sum = ['c' => 0, 'p' => 0]; foreach ($S as $v) { $sum['c'] += $v['charge']; $sum['p'] += $v['paid']; }
 ?>
 <h1>תקציב – ספקים <span class="mu">(<?= count($S) ?>)</span></h1>
+<?= bpay_banner() ?>
 <p class="mu">לכל ספק כרטסת עם כל החשבוניות והתשלומים והיתרה לתשלום, עם ייצוא ל-PDF ול-Excel. ספקים נלקחים מהחשבוניות ב"לתשלום" ומההוצאות בתנועות (לפי שם זהה).</p>
 <form method="get" class="bar auto card"><?= budget_year_select($f) ?>
   <label>חיפוש ספק<input type="search" name="q" value="<?= e($f['q']) ?>" placeholder="שם ספק…"></label>

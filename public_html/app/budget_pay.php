@@ -10,15 +10,16 @@ $digits = fn(string $s, int $max) => substr(preg_replace('/\D/', '', $s), 0, $ma
 $read = function () use ($digits, $cats): array {
   $d = budget_date((string)($_POST['inv_date'] ?? '')); $du = budget_date((string)($_POST['due_date'] ?? '')); $t = budget_amount((string)($_POST['total'] ?? '')); $c = (string)($_POST['category'] ?? '');
   return ['supplier' => mb_substr(trim((string)($_POST['supplier'] ?? '')), 0, 150), 'biz_id' => $digits((string)($_POST['biz_id'] ?? ''), 20), 'bank' => $digits((string)($_POST['bank'] ?? ''), 3), 'branch' => $digits((string)($_POST['branch'] ?? ''), 4), 'account' => $digits((string)($_POST['account'] ?? ''), 12),
-    'ref' => mb_substr(trim((string)($_POST['ref'] ?? '')), 0, 60), 'inv_date' => $d, 'due_date' => $du, 'descr' => mb_substr(trim((string)($_POST['descr'] ?? '')), 0, 300), 'category' => in_array($c, $cats, true) ? $c : '', 'total' => $t === null ? 0.0 : abs($t)];
+    'ref' => mb_substr(trim((string)($_POST['ref'] ?? '')), 0, 60), 'inv_date' => $d, 'due_date' => $du, 'descr' => mb_substr(trim((string)($_POST['descr'] ?? '')), 0, 300), 'category' => in_array($c, $cats, true) ? $c : '', 'unit' => in_array((string)($_POST['unit'] ?? ''), budget_units(), true) ? (string)$_POST['unit'] : '', 'total' => $t === null ? 0.0 : abs($t)];
 };
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check(); $act = (string)($_POST['act'] ?? '');
   if ($act === 'suggest') {   // השלמה אוטומטית מזיהוי חשבונית: קטגוריה ופרטי בנק מחשבוניות קודמות של אותו ספק
-    $n = trim((string)($_POST['supplier'] ?? '')); $b = $digits((string)($_POST['biz_id'] ?? ''), 20); $out = ['category' => '', 'bank' => '', 'branch' => '', 'account' => '', 'supplier' => ''];
+    $n = trim((string)($_POST['supplier'] ?? '')); $b = $digits((string)($_POST['biz_id'] ?? ''), 20); $out = ['category' => '', 'unit' => '', 'bank' => '', 'branch' => '', 'account' => '', 'supplier' => ''];
     $q = $pdo->prepare("SELECT * FROM budget_payables WHERE (? <> '' AND biz_id = ?) OR (? <> '' AND supplier = ?) ORDER BY id DESC LIMIT 1"); $q->execute([$b, $b, $n, $n]); $r = $q->fetch();
-    if ($r) { foreach (['category', 'bank', 'branch', 'account', 'supplier'] as $k) $out[$k] = (string)$r[$k]; }
+    if ($r) { foreach (['category', 'unit', 'bank', 'branch', 'account', 'supplier'] as $k) $out[$k] = (string)$r[$k]; }
     if ($out['category'] === '' && $n !== '') $out['category'] = budget_auto($n, '') ?: budget_history_cat($n, '');
+    if ($out['unit'] === '' && $n !== '') $out['unit'] = budget_history_unit($n);
     $json(['ok' => true] + $out);
   }
   if ($act === 'qs') {   // שמירה אוטומטית: סימון למס"ב / סכום לתשלום
@@ -38,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
       $q = $pdo->prepare("SELECT paid_amount FROM budget_payables WHERE id = ? AND status = 'open'"); $q->execute([$id]); $r = $q->fetch(); if (!$r) $flash('החשבונית לא נמצאה.', false);
       if ($d['total'] < (float)$r['paid_amount']) $flash('הסכום קטן ממה ששולם עד כה.', false, $to);
-      $pdo->prepare('UPDATE budget_payables SET supplier=?, biz_id=?, bank=?, branch=?, account=?, ref=?, inv_date=?, due_date=?, descr=?, category=?, total=?, pay_now=LEAST(COALESCE(pay_now, ?), ? - paid_amount) WHERE id=?')->execute([$d['supplier'], $d['biz_id'], $d['bank'], $d['branch'], $d['account'], $d['ref'], $d['inv_date'] ?: null, $d['due_date'] ?: null, $d['descr'], $d['category'], $d['total'], $d['total'], $d['total'], $id]);
+      $pdo->prepare('UPDATE budget_payables SET supplier=?, biz_id=?, bank=?, branch=?, account=?, ref=?, inv_date=?, due_date=?, descr=?, category=?, unit=?, total=?, pay_now=LEAST(COALESCE(pay_now, ?), ? - paid_amount) WHERE id=?')->execute([$d['supplier'], $d['biz_id'], $d['bank'], $d['branch'], $d['account'], $d['ref'], $d['inv_date'] ?: null, $d['due_date'] ?: null, $d['descr'], $d['category'], $d['unit'], $d['total'], $d['total'], $d['total'], $id]);
       $pid = $id; $msg = 'החשבונית עודכנה.';
     }
     if ($upl) { [$did, $er] = bdoc_save($_FILES['file'], 'inv', null, $pid, $by); if (!$did) $msg .= ' (הקובץ לא נשמר: ' . $er . ')'; }
@@ -56,6 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pdo->prepare("DELETE FROM budget_payables WHERE id = ? AND status = 'open'")->execute([$pid]); audit('budget_pay_del', 'budget', (string)$pid, ''); $flash('החשבונית נמחקה.');
   }
   if ($act === 'doc_del') { bdoc_delete((int)($_POST['doc'] ?? 0)); $flash('הקובץ הוסר.', true, $self . '?edit=' . (int)($_POST['id'] ?? 0) . '#pform'); }
+  if ($act === 'remind_cfg') {
+    $to = array_filter(array_map('trim', preg_split('/[,;\s]+/', (string)($_POST['rto'] ?? ''))), fn($m) => filter_var($m, FILTER_VALIDATE_EMAIL));
+    setting_set('bpay_remind_to', implode(',', $to), $by); setting_set('bpay_remind_days', (string)max(0, min(30, (int)($_POST['rdays'] ?? 3))), $by); setting_set('bpay_remind_on', isset($_POST['ron']) ? '1' : '0', $by);
+    audit('budget_pay_remind_cfg', 'budget', '', ''); $flash('הגדרות התזכורת נשמרו.');
+  }
   if ($act === 'masav_cfg') {
     setting_set('masav_inst', $digits((string)($_POST['inst'] ?? ''), 8), $by); setting_set('masav_sender', $digits((string)($_POST['sender'] ?? ''), 5), $by); setting_set('masav_name', mb_substr(trim((string)($_POST['mname'] ?? '')), 0, 30), $by); setting_set('masav_vis', isset($_POST['vis']) ? '1' : '0', $by);
     audit('masav_cfg', 'budget', '', ''); $flash('הגדרות מס"ב נשמרו.', true, $self . '#masav');
@@ -82,6 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 $msg = $_SESSION['pmsg'] ?? null; unset($_SESSION['pmsg']);
 $rows = $pdo->query("SELECT * FROM budget_payables WHERE status = 'open' ORDER BY COALESCE(due_date, inv_date, DATE(created_at)), id")->fetchAll();
+$dueOnly = isset($_GET['due']); if ($dueOnly) { $lim = date('Y-m-d', strtotime('+7 days')); $rows = array_values(array_filter($rows, fn($r) => $r['due_date'] && $r['due_date'] <= $lim)); }
 $editId = (int)($_GET['edit'] ?? 0); $ed = null; foreach ($rows as $r) if ((int)$r['id'] === $editId) $ed = $r;
 $pdocs = []; $ids = array_map('intval', array_column($rows, 'id'));
 if ($ids) foreach ($pdo->query('SELECT id, payable_id, orig_name FROM budget_docs WHERE tx_id IS NULL AND payable_id IN (' . implode(',', $ids) . ') ORDER BY id')->fetchAll() as $d) $pdocs[(int)$d['payable_id']][] = $d;
@@ -91,6 +98,13 @@ $v = fn(string $k, $d = '') => $ed ? $ed[$k] : $d; $opt = fn(string $sel) => '<o
 page_head('תקציב – לתשלום');
 ?>
 <h1>תקציב – לתשלום <span class="mu">(<?= count($rows) ?>)</span></h1>
+<?= $dueOnly ? '<p class="mu">מוצגות רק חשבוניות שמועד התשלום שלהן עבר או קרוב. <a href="budget_pay.php">הצגת הכול</a></p>' : bpay_banner() ?>
+<details class="card"><summary><b>תזכורת במייל על חשבוניות לתשלום</b></summary>
+  <form method="post" class="bar" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="act" value="remind_cfg">
+    <label class="chk"><input type="checkbox" name="ron" value="1"<?= setting_get('bpay_remind_on', '1') === '1' ? ' checked' : '' ?>> לשלוח תזכורת יומית</label>
+    <label>כמה ימים לפני מועד התשלום<input name="rdays" value="<?= e(setting_get('bpay_remind_days', '3')) ?>" inputmode="numeric" dir="ltr" class="pay-in"></label>
+    <label>כתובות מייל (מופרדות בפסיק; ריק = מנהלות המערכת)<input name="rto" value="<?= e(setting_get('bpay_remind_to', '')) ?>" dir="ltr"></label>
+    <button class="sec">שמירה</button></form></details>
 <?php if ($msg) echo '<p class="' . ($msg[0] ? 'ok' : 'er') . '">' . e($msg[1]) . '</p>'; ?>
 <p class="mu">חשבוניות והוצאות שעדיין לא שולמו. כשמסמנים שהחשבונית שולמה במלואה היא עוברת אוטומטית לרשימת ההוצאות (תקציב › תנועות). תשלום חלקי נרשם כ"שולם חלקית" והחשבונית נשארת כאן עם הסכום שנותר. אפשר לסמן חשבוניות לתשלום ולהפיק קובץ מס"ב זיכויים.</p>
 
@@ -105,6 +119,7 @@ page_head('תקציב – לתשלום');
     <label>לתשלום עד<input type="date" name="due_date" value="<?= e((string)$v('due_date')) ?>"></label>
     <label>סכום כולל ₪<input name="total" required inputmode="decimal" value="<?= $ed ? e((string)$ed['total']) : '' ?>"></label>
     <label>קטגוריה<select name="category"><?= $opt((string)$v('category')) ?></select></label>
+    <label>יחידה<select name="unit"><option value="">— אוטומטי (ברירת מחדל <?= e(budget_units()[0]) ?>) —</option><?php foreach (budget_units() as $uu) echo '<option' . ($uu === (string)$v('unit') ? ' selected' : '') . '>' . e($uu) . '</option>'; ?></select></label>
     <label>תיאור<input name="descr" maxlength="300" value="<?= e($v('descr')) ?>"></label>
     <fieldset class="bkd"><legend>פרטי בנק להעברה</legend>
       <label>בנק (קוד)<input name="bank" maxlength="3" inputmode="numeric" dir="ltr" class="pay-in" value="<?= e($v('bank')) ?>"></label>

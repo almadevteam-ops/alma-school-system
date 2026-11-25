@@ -65,6 +65,18 @@ function budget_unit_for(string $unit, string $cat): string {
   $units = budget_units(); if ($unit !== '' && in_array($unit, $units, true)) return $unit;
   return in_array('עלמא', $units, true) ? 'עלמא' : $units[0];   // ברירת מחדל: עלמא. יחידה אחרת נבחרת ידנית בשורה
 }
+/** יחידה לשורה: יחידה מפורשת; אחרת היחידה שבה הספק הזה נרשם בדרך כלל (לפחות 80% מהתנועות הקודמות); אחרת ברירת המחדל (עלמא). */
+function budget_unit_auto(string $unit, string $cat, string $name): string {
+  $units = budget_units(); if ($unit !== '' && in_array($unit, $units, true)) return $unit;
+  $h = budget_history_unit($name); return $h !== '' ? $h : budget_unit_for('', $cat);
+}
+function budget_history_unit(string $name): string {
+  static $q = null, $memo = []; $name = trim($name); if ($name === '' || in_array($name, BUDGET_GENERIC, true)) return ''; if (isset($memo[$name])) return $memo[$name];
+  if ($q === null) $q = db()->prepare("SELECT unit, COUNT(*) c FROM budget_tx WHERE name = ? AND unit <> '' GROUP BY unit ORDER BY c DESC, MAX(id) DESC");
+  $q->execute([$name]); $r = $q->fetchAll(); if (!$r) return $memo[$name] = '';
+  $tot = array_sum(array_column($r, 'c')); $u = $r[0]['c'] / $tot >= 0.8 ? (string)$r[0]['unit'] : '';
+  return $memo[$name] = (in_array($u, budget_units(), true) ? $u : '');
+}
 function budget_cat_ensure(string $c): void { if ($c !== '') db()->prepare('INSERT IGNORE INTO budget_cats (name) VALUES (?)')->execute([mb_substr($c, 0, 100)]); }
 
 /** קריאת טבלת HTML (קובץ ".xls" שהבנק מייצא בפועל כ-HTML, או htm). מחזיר שורות של תאים. */
@@ -120,7 +132,7 @@ function budget_import(string $path, string $name, string $by): array {
       if ($n === '') { $n = mb_substr($e, 0, 150); $e = ''; }
       $n = trim((string)preg_replace('/\s*\(\x{05D9}\)\s*$/u', '', $n)) ?: $n;   // סימון "(י)" בסוף תיאור תנועה בנקאית
       $c = mb_substr($g($r, 'c'), 0, 100); if ($c === '') $c = budget_auto($n, $e, $rules);
-      if ($inc === null) $inc = $g($r, 't') === 'הכנסה' ? 1 : 0; $u = budget_unit_for($g($r, 'u'), $c);
+      if ($inc === null) $inc = $g($r, 't') === 'הכנסה' ? 1 : 0; $u = budget_unit_auto($g($r, 'u'), $c, (string)$g($r, 'n'));
       $kk = implode("\x1f", [$d, $n, $e, $ref, $a, $inc]);   // שורות זהות בקובץ הן תנועות נפרדות: מדלגים רק על מספר השורות שכבר קיימות במסד
       if (!isset($inDb[$kk])) {
         if ($n === BUDGET_IB && !$inc && $ref !== '') { $exIb->execute([$d, $ref, $a]); $inDb[$kk] = (int)$exIb->fetchColumn(); }   // העברה שכבר יובאה בפירוט מרשימת העברות
@@ -261,7 +273,7 @@ function budget_commit(array $items, array $pick, string $by): array {
   try {
     foreach ($pick as $i) {
       $x = $items[(int)$i] ?? null; if (!$x || $x['dup'] || (!empty($x['grp']) && isset($skip[$x['grp']]))) continue;
-      budget_cat_ensure($x['cat']); $u = budget_unit_for('', $x['cat']);
+      budget_cat_ensure($x['cat']); $u = budget_unit_auto('', $x['cat'], (string)($x['n'] ?? ''));
       if (!empty($x['upd'])) { $up->execute([$x['n'], $x['e'], $x['cat'], $u, now(), (int)$x['upd'], BUDGET_IB]); if ($up->rowCount()) { $upd++; if ($x['cat'] === '') $un++; continue; } }
       $row = [$x['d'], $x['n'], $x['e'], $x['r'], $x['a'], $x['inc'], $x['cat'], $u, now(), mb_substr($by, 0, 100)];
       if ($hasCard) $row[] = !empty($x['grp']) ? 'cardok' : (string)($x['src'] ?? '');

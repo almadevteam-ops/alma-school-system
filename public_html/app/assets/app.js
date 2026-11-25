@@ -859,7 +859,7 @@
   function suggest(r) {
     var fd = new FormData(); fd.append('_t', form.elements['_t'].value); fd.append('act', 'suggest'); fd.append('supplier', form.elements['supplier'].value); fd.append('biz_id', form.elements['biz_id'].value);
     return fetch(form.getAttribute('action') || location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (x) { return x.json(); }).then(function (j) {
-      if (!j || !j.ok) return; setv('category', j.category); setv('bank', j.bank); setv('branch', j.branch); setv('account', j.account);
+      if (!j || !j.ok) return; setv('category', j.category); setv('unit', j.unit); setv('bank', j.bank); setv('branch', j.branch); setv('account', j.account);
     }).catch(function () {});
   }
   if (!fi) return;
@@ -895,6 +895,28 @@
     if (b.getAttribute('data-confirm') && !window.confirm(b.getAttribute('data-confirm'))) return;
     var id = b.getAttribute('data-id'), act = b.getAttribute('data-act'), pn = f.elements['pn[' + id + ']'];
     a.elements['act'].value = act; a.elements['id'].value = id; a.elements['amount'].value = pn ? pn.value : ''; a.submit();
+  });
+})();
+
+// תקציב מול ביצוע: שמירה אוטומטית של תקציב שנתי לקטגוריה וחישוב מחדש של השורה
+(function () {
+  var f = document.querySelector('form.planf'); if (!f) return;
+  var st = f.querySelector('.asv');
+  function say(t, ok) { if (st) { st.textContent = t; st.className = 'asv ' + (ok ? 'ok' : 'er'); } }
+  function fmt(n) { return '₪' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  f.addEventListener('submit', function (e) { e.preventDefault(); });
+  f.addEventListener('change', function (e) {
+    var el = e.target; if (el.name !== 'pl') return;
+    var tr = el.closest('tr'), spent = parseFloat(tr.getAttribute('data-spent')) || 0, v = parseFloat(String(el.value).replace(/,/g, '')) || 0;
+    var fd = new FormData(); fd.append('_t', f.elements['_t'].value); fd.append('act', 'set'); fd.append('y', f.getAttribute('data-y')); fd.append('unit', f.getAttribute('data-unit')); fd.append('cat', el.getAttribute('data-cat')); fd.append('amount', el.value);
+    fetch(location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.ok) { say(j.msg || 'השמירה נכשלה', false); return; }
+      say('נשמר ✓', true);
+      var pc = v > 0 ? spent / v * 100 : null, bar = tr.querySelector('.pl-bar'), left = tr.querySelector('.pl-left');
+      tr.className = 'plr' + (pc === null ? '' : pc >= 100 ? ' over' : pc >= 80 ? ' warn' : '');
+      if (left) left.textContent = v > 0 ? fmt(v - spent) : '—';
+      if (bar) bar.innerHTML = pc === null ? '' : '<div class="bgb pl"><i class="w' + Math.max(1, Math.min(100, Math.round(pc))) + (pc >= 100 ? ' over' : pc >= 80 ? ' warn' : '') + '"></i><span class="n">' + Math.round(pc) + '%</span></div>';
+    }).catch(function () { say('השמירה נכשלה', false); });
   });
 })();
 

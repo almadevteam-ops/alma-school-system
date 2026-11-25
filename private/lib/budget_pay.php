@@ -38,14 +38,29 @@ function bdoc_html(array $docs, string $self = ''): string {
 }
 
 /** הוספת חשבונית לתשלום. מחזירה את המזהה. */
+/** השלמה אוטומטית לספק חוזר: קטגוריה, יחידה ופרטי בנק מחשבוניות והוצאות קודמות של אותו ספק (רק לשדות ריקים). */
+function bpay_fill(array $d): array {
+  $n = trim((string)($d['supplier'] ?? '')); $b = (string)($d['biz_id'] ?? ''); if ($n === '' && $b === '') return $d;
+  $q = db()->prepare("SELECT * FROM budget_payables WHERE (? <> '' AND biz_id = ?) OR (? <> '' AND supplier = ?) ORDER BY id DESC LIMIT 5"); $q->execute([$b, $b, $n, $n]); $prev = $q->fetchAll();
+  foreach ($prev as $r) {
+    foreach (['bank', 'branch', 'account'] as $k) if (($d[$k] ?? '') === '' && (string)$r[$k] !== '') $d[$k] = (string)$r[$k];
+    if (($d['biz_id'] ?? '') === '' && (string)$r['biz_id'] !== '') $d['biz_id'] = (string)$r['biz_id'];
+    if (($d['category'] ?? '') === '' && (string)$r['category'] !== '') $d['category'] = (string)$r['category'];
+    if (($d['unit'] ?? '') === '' && (string)$r['unit'] !== '') $d['unit'] = (string)$r['unit'];
+  }
+  if (($d['category'] ?? '') === '' && $n !== '') $d['category'] = budget_history_cat($n, '') ?: budget_auto($n, '');
+  if (($d['unit'] ?? '') === '' && $n !== '') $d['unit'] = budget_history_unit($n);
+  return $d;
+}
 function bpay_add(array $d, string $by): int {
-  db()->prepare('INSERT INTO budget_payables (supplier, biz_id, bank, branch, account, ref, inv_date, due_date, descr, category, total, pay_now, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')->execute([
+  $d = bpay_fill($d); $d['unit'] = in_array((string)($d['unit'] ?? ''), budget_units(), true) ? (string)$d['unit'] : '';
+  db()->prepare('INSERT INTO budget_payables (supplier, biz_id, bank, branch, account, ref, inv_date, due_date, descr, category, total, pay_now, created_by, created_at, unit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')->execute([
     mb_substr($d['supplier'], 0, 150), mb_substr($d['biz_id'], 0, 20), mb_substr($d['bank'], 0, 3), mb_substr($d['branch'], 0, 4), mb_substr($d['account'], 0, 12), mb_substr($d['ref'], 0, 60), $d['inv_date'] ?: null, $d['due_date'] ?: null,
-    mb_substr($d['descr'], 0, 300), mb_substr($d['category'], 0, 100), $d['total'], $d['total'], mb_substr($by, 0, 100), now()]);
+    mb_substr($d['descr'], 0, 300), mb_substr($d['category'], 0, 100), $d['total'], $d['total'], mb_substr($by, 0, 100), now(), $d['unit']]);
   return (int)db()->lastInsertId();
 }
 /** רישום תשלום (מלא או חלקי). תשלום מלא מעביר את החשבונית להוצאות (כשולם). מחזירה [הודעה, הועבר להוצאות]. */
-function bpay_pay(int $pid, float $amount, string $by, ?string $on = null, string $note = ''): array {
+function bpay_pay(int $pid, float $amount, string $by, ?string $on = null, string $note = '', ?int $linkTx = null): array {
   $pdo = db(); $pdo->beginTransaction();
   try {
     $st = $pdo->prepare("SELECT * FROM budget_payables WHERE id = ? AND status = 'open' FOR UPDATE"); $st->execute([$pid]); $r = $st->fetch();
@@ -54,14 +69,20 @@ function bpay_pay(int $pid, float $amount, string $by, ?string $on = null, strin
     if ($amount <= 0) { $pdo->rollBack(); return ['יש להזין סכום לתשלום.', false]; }
     $on = ($on && preg_match('/^\d{4}-\d{2}-\d{2}$/', $on)) ? $on : date('Y-m-d');
     $pdo->prepare('INSERT INTO budget_pay_log (payable_id, amount, paid_on, note, created_by, created_at) VALUES (?,?,?,?,?,?)')->execute([$pid, $amount, $on, mb_substr($note, 0, 120), mb_substr($by, 0, 100), now()]);
+    if ($linkTx) $pdo->prepare('UPDATE budget_tx SET payable_id = ?, has_invoice = 1, updated_at = ? WHERE id = ? AND payable_id IS NULL')->execute([$pid, now(), $linkTx]);   // התאמה לתנועת בנק קיימת
     $paid = round((float)$r['paid_amount'] + $amount, 2); $left = round((float)$r['total'] - $paid, 2);
     if ($left > 0.004) {
       $pdo->prepare('UPDATE budget_payables SET paid_amount = ?, pay_now = ?, masav = 0 WHERE id = ?')->execute([$paid, $left, $pid]); $pdo->commit();
       return ['נרשם תשלום חלקי של ' . budget_money($amount) . '. נשאר לתשלום ' . budget_money($left) . '.', false];
     }
+    if ($linkTx) {
+      $pdo->prepare('UPDATE budget_docs SET tx_id = ? WHERE payable_id = ?')->execute([$linkTx, $pid]);
+      $pdo->prepare("UPDATE budget_payables SET paid_amount = total, pay_now = NULL, masav = 0, status = 'paid', moved_tx_id = ?, paid_at = ? WHERE id = ?")->execute([$linkTx, now(), $pid]); $pdo->commit();
+      return ['החשבונית הותאמה לתנועת הבנק ושולמה במלואה.', true];
+    }
     $cat = (string)$r['category']; if ($cat !== '') budget_cat_ensure($cat);
     $has = (int)$pdo->query('SELECT COUNT(*) FROM budget_docs WHERE payable_id = ' . (int)$pid)->fetchColumn() > 0 ? 1 : 0;
-    $pdo->prepare('INSERT INTO budget_tx (tx_date,name,descr,ref,amount,is_income,category,unit,has_invoice,has_receipt,created_at,created_by,paid,payable_id) VALUES (?,?,?,?,?,0,?,?,?,0,?,?,1,?)')->execute([date('Y-m-d'), $r['supplier'], $r['descr'], $r['ref'], $r['total'], $cat, budget_unit_for('', $cat), $has, now(), mb_substr($by, 0, 100), $pid]);
+    $pdo->prepare('INSERT INTO budget_tx (tx_date,name,descr,ref,amount,is_income,category,unit,has_invoice,has_receipt,created_at,created_by,paid,payable_id) VALUES (?,?,?,?,?,0,?,?,?,0,?,?,1,?)')->execute([date('Y-m-d'), $r['supplier'], $r['descr'], $r['ref'], $r['total'], $cat, ($r['unit'] !== '' ? $r['unit'] : budget_unit_auto('', $cat, (string)$r['supplier'])), $has, now(), mb_substr($by, 0, 100), $pid]);
     $tx = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE budget_docs SET tx_id = ? WHERE payable_id = ?')->execute([$tx, $pid]);
     $pdo->prepare("UPDATE budget_payables SET paid_amount = total, pay_now = NULL, masav = 0, status = 'paid', moved_tx_id = ?, paid_at = ? WHERE id = ?")->execute([$tx, now(), $pid]); $pdo->commit();
@@ -103,3 +124,39 @@ function masav_build(array $lines, string $creditDate, array $c): string {
   $rec[] = str_repeat('9', 128);
   return implode("\r\n", $rec) . "\r\n";
 }
+
+// ---------- התראות מועד תשלום ותזכורת במייל ----------
+/** חשבוניות פתוחות שעבר מועד התשלום שלהן, או שהוא בימים הקרובים. */
+function bpay_alerts(int $days = 7): array {
+  static $memo = []; if (isset($memo[$days])) return $memo[$days];
+  $o = ['over' => 0, 'over_sum' => 0.0, 'soon' => 0, 'soon_sum' => 0.0, 'days' => $days, 'rows' => []];
+  try {
+    $q = db()->prepare("SELECT *, (total - paid_amount) rem FROM budget_payables WHERE status = 'open' AND due_date IS NOT NULL AND due_date <= ? ORDER BY due_date, id"); $q->execute([date('Y-m-d', strtotime("+$days days"))]);
+    foreach ($q->fetchAll() as $r) { $od = $r['due_date'] < date('Y-m-d'); $r['over'] = $od; $o['rows'][] = $r; if ($od) { $o['over']++; $o['over_sum'] += (float)$r['rem']; } else { $o['soon']++; $o['soon_sum'] += (float)$r['rem']; } }
+  } catch (Throwable $t) {}
+  return $memo[$days] = $o;
+}
+function bpay_banner(): string {
+  if (!bpay_ready()) return ''; $a = bpay_alerts(); if (!$a['over'] && !$a['soon']) return '';
+  $p = []; if ($a['over']) $p[] = '<b>' . $a['over'] . '</b> חשבוניות שעבר מועד התשלום שלהן (' . e(budget_money($a['over_sum'])) . ')'; if ($a['soon']) $p[] = '<b>' . $a['soon'] . '</b> לתשלום ב-' . $a['days'] . ' הימים הקרובים (' . e(budget_money($a['soon_sum'])) . ')';
+  return '<p class="aptn">⚠ ' . implode(' · ', $p) . ' · <a href="budget_pay.php?due=1">לצפייה</a></p>';
+}
+function bpay_remind_to(): array {
+  $l = array_filter(array_map('trim', preg_split('/[,\s;]+/', (string)setting_get('bpay_remind_to', '')) ?: []), fn($m) => filter_var($m, FILTER_VALIDATE_EMAIL));
+  if ($l) return array_values(array_unique($l));
+  try { foreach (db()->query("SELECT id FROM users WHERE role = 'admin' AND active = 1")->fetchAll(PDO::FETCH_COLUMN) as $uid) { $m = rem_email((int)$uid); if ($m !== '') $l[] = $m; } } catch (Throwable $t) {}
+  return array_values(array_unique($l));
+}
+/** מייל תזכורת יומי (אחרי 07:00, פעם ביום) על חשבוניות שעבר מועדן או שמועדן קרוב. מחזיר מספר מיילים שנשלחו. */
+function bpay_remind_cycle(): int {
+  if (!bpay_ready() || setting_get('bpay_remind_on', '1') === '0' || (int)date('G') < 7) return 0;
+  $today = date('Y-m-d'); if (setting_get('bpay_remind_last', '') === $today) return 0;
+  $days = max(0, min(30, (int)setting_get('bpay_remind_days', '3'))); $a = bpay_alerts($days); setting_set('bpay_remind_last', $today, 'system');
+  if (!$a['rows']) return 0; $to = bpay_remind_to(); if (!$to) return 0;
+  $b = "שלום,\nתזכורת לחשבוניות לתשלום במערכת עלמא:\n\n";
+  foreach ($a['rows'] as $r) $b .= '• ' . $r['supplier'] . ($r['ref'] !== '' ? ' (חשבונית ' . $r['ref'] . ')' : '') . ' – ' . budget_money($r['rem']) . ' – לתשלום עד ' . date('d/m/Y', strtotime($r['due_date'])) . ($r['over'] ? ' (עבר המועד!)' : '') . "\n";
+  $b .= "\nלצפייה ולתשלום: דף תקציב › לתשלום.\n"; $n = 0;
+  foreach ($to as $m) if (send_mail($m, 'תזכורת: חשבוניות לתשלום (' . count($a['rows']) . ')', $b)) $n++;
+  return $n;
+}
+function bpay_remind_lazy(): void { try { bpay_remind_cycle(); } catch (Throwable $t) {} }
