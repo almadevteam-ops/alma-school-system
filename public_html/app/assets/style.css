@@ -325,3 +325,4 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--bg) u
 .bdc .bdf{display:flex;max-width:100%;box-sizing:border-box;margin:0 0 3px}
 .bdc .bdf a{display:block;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 form.autosave td select{max-width:150px}form.autosave td{padding-inline:6px}
+tr.edr>td{background:#f6f1fa;padding:10px 12px;white-space:normal}tr.edr .edf{margin-top:6px}tr.edr .edf label{min-width:130px}

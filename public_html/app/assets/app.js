@@ -898,4 +898,7 @@
   });
 })();
 
+// תנועות: כשנפתחת עריכה, השורה בעריכה נגללת למרכז המסך
+(function () { var r = document.getElementById('edrow'); if (r && r.scrollIntoView) r.scrollIntoView({ block: 'center' }); })();
+
 (function () { if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).catch(function () {}); }); })();

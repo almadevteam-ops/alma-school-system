@@ -38,6 +38,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $st = $pdo->prepare('UPDATE budget_tx SET tx_date=?,name=?,descr=?,ref=?,amount=?,is_income=?,category=?,unit=?,has_invoice=?,has_receipt=?' . ($hp ? ',paid=' . (int)$pd : '') . ',updated_at=? WHERE id=?'); $st->execute([$d, $n, $e2, $r, $a, $inc, $c, $u, $iv, $rc, now(), $id]);
       audit('budget_edit', 'budget', (string)$id, $n . ' ' . $a); $_SESSION['bmsg'] = [true, 'התנועה עודכנה.']; redirect($self);
     }
+  } elseif ($act === 'topay') {   // העברת הוצאה (שטרם שולמה) לחלונית "לתשלום"
+    $id = (int)($_POST['id'] ?? 0); $q = $pdo->prepare('SELECT * FROM budget_tx WHERE id=? AND is_income=0'); $q->execute([$id]); $x = $q->fetch();
+    if (!$x || !bpay_ready()) $flash('התנועה לא נמצאה (אפשר להעביר לתשלום רק הוצאה).', false);
+    $pid = bpay_add(['supplier' => (string)$x['name'], 'biz_id' => '', 'bank' => '', 'branch' => '', 'account' => '', 'ref' => (string)$x['ref'], 'inv_date' => (string)$x['tx_date'], 'due_date' => '', 'descr' => (string)$x['descr'], 'category' => (string)$x['category'], 'total' => (float)$x['amount']], $by);
+    $pdo->prepare('UPDATE budget_docs SET payable_id = ?, tx_id = NULL WHERE tx_id = ?')->execute([$pid, $id]);
+    $pdo->prepare('DELETE FROM budget_tx WHERE id = ?')->execute([$id]); audit('budget_topay', 'budget', (string)$id, $x['name'] . ' ' . $x['amount']);
+    $_SESSION['bmsg'] = [true, 'ההוצאה הועברה לחלונית "לתשלום". יש להשלים שם פרטי בנק ולסמן תשלום.']; redirect($self);
   } elseif ($act === 'del') {
     $id = (int)($_POST['id'] ?? 0); $q = $pdo->prepare('SELECT name, amount FROM budget_tx WHERE id=?'); $q->execute([$id]); $x = $q->fetch();
     if ($x) { $pdo->prepare('DELETE FROM budget_tx WHERE id=?')->execute([$id]); audit('budget_del', 'budget', (string)$id, $x['name'] . ' ' . $x['amount']); $flash('התנועה נמחקה.'); }
@@ -149,23 +156,27 @@ $sortLink = function (string $k, string $l) use ($keep, $sk, $sd) { $o = $keep; 
 $pg = function (int $n) use ($keep) { $o = $keep; $o['p'] = $n; return 'budget_tx.php?' . http_build_query($o); };
 $opt = fn(array $list, string $sel, string $first = '') => ($first !== '' ? '<option value="">' . e($first) . '</option>' : '') . implode('', array_map(fn($x) => '<option' . ($x === $sel ? ' selected' : '') . '>' . e($x) . '</option>', $list));
 $v = fn(string $k, $d = '') => $ed ? $ed[$k] : $d;
+$fields = function (string $A, ?array $E) use ($cats, $units, $opt): string { $v = fn(string $k, $d = '') => $E ? $E[$k] : $d; $ed = $E; ob_start(); ?>
+    <label>תאריך<input<?= $A ?> type="date" name="d" required value="<?= e($v('tx_date', date('Y-m-d'))) ?>"></label>
+    <label>שם (ספק)<input<?= $A ?> name="n" required maxlength="150" value="<?= e($v('name')) ?>"></label>
+    <label>תיאור<input<?= $A ?> name="e" maxlength="300" value="<?= e($v('descr')) ?>"></label>
+    <label>אסמכתה<input<?= $A ?> name="r" maxlength="100" value="<?= e($v('ref')) ?>"></label>
+    <label>סכום ₪<input<?= $A ?> name="a" required inputmode="decimal" value="<?= $ed ? e((string)$ed['amount']) : '' ?>"></label>
+    <label>סוג<select<?= $A ?> name="t"><option value="out">הוצאה</option><option value="in"<?= $ed && $ed['is_income'] ? ' selected' : '' ?>>הכנסה</option></select></label>
+    <label>קטגוריה<select<?= $A ?> name="c"><?= $opt($cats, (string)$v('category'), 'שיוך אוטומטי / ללא') ?></select></label>
+    <label>יחידה<select<?= $A ?> name="u"><?= $opt($units, (string)$v('unit', $units[0])) ?></select></label>
+    <label class="chk"><input<?= $A ?> type="checkbox" name="inv"<?= $ed && $ed['has_invoice'] ? ' checked' : '' ?>> חשבונית</label>
+    <label class="chk"><input<?= $A ?> type="checkbox" name="rec"<?= $ed && $ed['has_receipt'] ? ' checked' : '' ?>> קבלה</label>
+    <?php if (bpay_ready()): ?><label class="chk"><input<?= $A ?> type="checkbox" name="paid"<?= !$ed || !empty($ed['paid']) ? ' checked' : '' ?>> שולם (הוצאה)</label><?php endif; ?>
+<?php return ob_get_clean(); };
+$inline = $ed && in_array((int)$ed['id'], array_map('intval', array_column($rows, 'id')), true);   // העריכה מוצגת בתוך השורה עצמה, כדי שתמיד תהיה בטווח הראייה
 page_head('תקציב – תנועות');
 ?>
 <h1>תקציב – תנועות</h1>
 <?php if ($msg) echo '<p class="' . ($msg[0] ? 'ok' : 'er') . '">' . e($msg[1]) . '</p>'; ?>
-<details class="card" id="txform"<?= $showForm ? ' open' : '' ?>><summary><b><?= $ed ? 'עריכת תנועה' : 'הוספת הוצאה או הכנסה' ?></b></summary>
-  <form method="post" class="bar" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="<?= $ed ? 'update' : 'add' ?>"><?php if ($ed) echo '<input type="hidden" name="id" value="' . (int)$ed['id'] . '">'; ?>
-    <label>תאריך<input type="date" name="d" required value="<?= e($v('tx_date', date('Y-m-d'))) ?>"></label>
-    <label>שם (ספק)<input name="n" required maxlength="150" value="<?= e($v('name')) ?>"></label>
-    <label>תיאור<input name="e" maxlength="300" value="<?= e($v('descr')) ?>"></label>
-    <label>אסמכתה<input name="r" maxlength="100" value="<?= e($v('ref')) ?>"></label>
-    <label>סכום ₪<input name="a" required inputmode="decimal" value="<?= $ed ? e((string)$ed['amount']) : '' ?>"></label>
-    <label>סוג<select name="t"><option value="out">הוצאה</option><option value="in"<?= $ed && $ed['is_income'] ? ' selected' : '' ?>>הכנסה</option></select></label>
-    <label>קטגוריה<select name="c"><?= $opt($cats, (string)$v('category'), 'שיוך אוטומטי / ללא') ?></select></label>
-    <label>יחידה<select name="u"><?= $opt($units, (string)$v('unit', $units[0])) ?></select></label>
-    <label class="chk"><input type="checkbox" name="inv"<?= $ed && $ed['has_invoice'] ? ' checked' : '' ?>> חשבונית</label>
-    <label class="chk"><input type="checkbox" name="rec"<?= $ed && $ed['has_receipt'] ? ' checked' : '' ?>> קבלה</label>
-    <?php if (bpay_ready()): ?><label class="chk"><input type="checkbox" name="paid"<?= !$ed || !empty($ed['paid']) ? ' checked' : '' ?>> שולם (הוצאה)</label><?php endif; ?>
+<details class="card" id="txform"<?= ($showForm && !$inline) ? ' open' : '' ?>><summary><b><?= $ed && !$inline ? 'עריכת תנועה' : 'הוספת הוצאה או הכנסה' ?></b></summary>
+  <form method="post" class="bar" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="<?= $ed && !$inline ? 'update' : 'add' ?>"><?php if ($ed && !$inline) echo '<input type="hidden" name="id" value="' . (int)$ed['id'] . '">'; ?>
+    <?= $fields('', $inline ? null : $ed) ?>
     <button><?= $ed ? 'שמירת שינויים' : 'הוספה' ?></button><?php if ($ed) echo '<a class="btn sec" href="' . e($self) . '">ביטול</a>'; ?>
   </form>
   <p class="mu">אם לא נבחרה קטגוריה, המערכת משייכת לפי מילות מפתח בשם ובתיאור (אפשר לערוך את הכללים בדף "קטגוריות").</p>
@@ -190,10 +201,15 @@ page_head('תקציב – תנועות');
 <td><select name="cat[<?= $id ?>]"><?= $opt($cats, $r['category'], '— לא משויך —') ?></select></td><td><?= e($r['unit']) ?></td>
 <?php foreach (['inv' => ['has_invoice', 'חשבונית'], 'rec' => ['has_receipt', 'קבלה']] as $k => [$col, $lb]): ?><td class="bdc"><input type="checkbox" name="<?= $k ?>[<?= $id ?>]" value="1"<?= $r[$col] ? ' checked' : '' ?> aria-label="<?= $lb ?>"><?php if ($hasPay): ?><span class="bdu<?= $r[$col] ? ' on' : '' ?>" data-tx="<?= $id ?>" data-k="<?= $k ?>"><?= bdoc_html($bdocs[$id][$k] ?? []) ?><label class="bdup">+ העלאה<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" hidden></label></span><?php endif; ?></td><?php endforeach; ?>
 <?php if ($hasPay): ?><td><?php if (!$r['is_income']): ?><input type="checkbox" name="paid[<?= $id ?>]" value="1"<?= $r['paid'] ? ' checked' : '' ?> aria-label="שולם"><?php endif; ?></td><?php endif; ?>
-<td class="n"><a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'edit=' . $id) ?>#txform">עריכה</a> <button class="dg" name="del" value="<?= $id ?>" data-confirm="למחוק את התנועה?" formnovalidate>מחיקה</button></td></tr>
+<td class="n"><a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'edit=' . $id) ?>#edrow">עריכה</a> <button class="dg" name="del" value="<?= $id ?>" data-confirm="למחוק את התנועה?" formnovalidate>מחיקה</button></td></tr>
+<?php if ($inline && (int)$ed['id'] === $id): ?><tr class="edr" id="edrow"><td colspan="<?= $hasPay ? 11 : 10 ?>"><b>עריכת תנועה</b><div class="bar edf"><?= $fields(' form="edform"', $ed) ?>
+  <button form="edform">שמירת שינויים</button><a class="btn sec" href="<?= e($self) ?>">ביטול</a>
+  <?php if ($hasPay && !$ed['is_income']): ?><button form="edtp" class="sec" data-confirm="להעביר את ההוצאה לחלונית &quot;לתשלום&quot;? היא תוסר מרשימת התנועות ותחזור אליה רק אחרי שתסומן כשולמה.">העברה ל&quot;לתשלום&quot;</button><?php endif; ?></div></td></tr><?php endif; ?>
 <?php endforeach; ?>
 </table></div>
 </form>
+<?php if ($inline): ?><form method="post" id="edform" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="update"><input type="hidden" name="id" value="<?= (int)$ed['id'] ?>"></form>
+<form method="post" id="edtp" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="topay"><input type="hidden" name="id" value="<?= (int)$ed['id'] ?>"></form><?php endif; ?>
 <?php if ($pages > 1): ?><p>עמוד <?= $p ?> מתוך <?= $pages ?> · <?php if ($p > 1) echo '<a href="' . e($pg($p - 1)) . '">הקודם</a> '; if ($p < $pages) echo '<a href="' . e($pg($p + 1)) . '">הבא</a>'; ?></p><?php endif; ?>
 <form method="post" class="bar card" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="bulk">
   <label>שיוך כל התנועות שמוצגות בסינון (<?= (int)$tot['n'] ?>) לקטגוריה<select name="c"><?= $opt($cats, '', '— בחרי —') ?></select></label><button class="sec" data-confirm="לשייך את כל <?= (int)$tot['n'] ?> התנועות שבסינון לקטגוריה שנבחרה?">שייכי</button></form>
