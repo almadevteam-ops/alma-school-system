@@ -16,7 +16,7 @@ foreach ($data as $fid => $d) {
   $fx = 0.0; $fc = 0.0; $due = 0; $dueFull = 0; $dueAny = 0;
   foreach ($d['status'] as $m => $st) {
     if ($st === 'na') continue;
-    $ex = $d['monthly']; $co = min((float)$d['cov'][$m], $ex); $gap = $ex - $co;
+    $ex = $d['mo'][$m] ?? $d['monthly']; $co = min((float)$d['cov'][$m], $ex); $gap = $ex - $co;
     $S[$m]['n']++; $S[$m]['ex'] += $ex; $S[$m]['co'] += $co;
     if ($st === 'wip') $S[$m]['wip'] += $gap; elseif ($st === 'ref') $S[$m]['ref'] += $gap; elseif ($st === 'fut') $S[$m]['fut'] += $gap; elseif ($st !== 'paid') $S[$m]['miss'] += $gap;
     if (in_array($m, $pick, true)) {

@@ -68,7 +68,7 @@ function gad_mark(int $m, array $fams, int $gid, int $uid): int {
   $ins = $pdo->prepare('INSERT INTO payments (family_id, charge_id, for_month, amount, paid_on, method, ref, note, payer_id, batch, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
   foreach ($fams as $fid => $f) {
     $d = $data[$fid] ?? null; if (!$d || ($d['status'][$m] ?? 'na') === 'na') continue;
-    $miss = round($d['monthly'] - (float)$d['cov'][$m], 2); if ($miss <= 0.004) continue;
+    $miss = round(($d['mo'][$m] ?? $d['monthly']) - (float)$d['cov'][$m], 2); if ($miss <= 0.004) continue;
     $ins->execute([$fid, null, $m, $miss, date('Y-m-d'), 'payer', '', 'מורשת גד – ' . SCHOOL_MONTHS[$m], $gid, 'gad' . $m, $uid, now()]); $n++;
   }
   return $n;

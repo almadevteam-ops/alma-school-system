@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $gm = []; foreach (db()->query('SELECT month, paid, ref FROM gad_months')->fetchAll() as $r) $gm[(int)$r['month']] = $r;
 $data = collection_data(array_keys($fams));
 $sm = array_fill(1, 12, 0.0); $cnt = array_fill(1, 12, 0); $tot = 0.0; $paidSum = 0.0;
-foreach ($data as $d) foreach ($d['status'] as $m => $st) if ($st !== 'na') { $sm[$m] += $d['monthly']; $cnt[$m]++; $tot += $d['monthly']; $paidSum += min((float)$d['cov'][$m], $d['monthly']); }
+foreach ($data as $d) foreach ($d['status'] as $m => $st) if ($st !== 'na') { $mo = $d['mo'][$m] ?? $d['monthly']; $sm[$m] += $mo; $cnt[$m]++; $tot += $mo; $paidSum += min((float)$d['cov'][$m], $mo); }
 page_head('מורשת גד');
 ?>
 <h1>מורשת גד – תלמידות בדירה <span class="mu">(<?= count($fams) ?> תיקים)</span></h1>

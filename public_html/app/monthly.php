@@ -8,10 +8,10 @@ $gad = gad_families(); $gadPaid = 0.0; $lateN = 0; $total = ['ex' => 0.0, 'co' =
 foreach ($data as $fid => $d) {
   foreach ($d['status'] as $m => $st) {
     if ($st === 'na') continue;
-    $n[$m]++; $ex[$m] += $d['monthly']; $c = min((float)$d['cov'][$m], $d['monthly']); $co[$m] += $c;
-    if ($st === 'wip') $wp[$m] += $d['monthly'] - $c;
+    $mo = $d['mo'][$m] ?? $d['monthly']; $n[$m]++; $ex[$m] += $mo; $c = min((float)$d['cov'][$m], $mo); $co[$m] += $c;
+    if ($st === 'wip') $wp[$m] += $mo - $c;
   }
-  if (isset($gad[$fid])) $gadPaid += array_sum(array_map(fn($m) => min((float)$d['cov'][$m], $d['monthly']), array_keys(array_filter($d['status'], fn($x) => $x !== 'na'))));
+  if (isset($gad[$fid])) $gadPaid += array_sum(array_map(fn($m) => min((float)$d['cov'][$m], $d['mo'][$m] ?? $d['monthly']), array_keys(array_filter($d['status'], fn($x) => $x !== 'na'))));
 }
 foreach ($data as $fid => $d) { $r = db()->prepare('SELECT collect_day FROM families WHERE id = ?'); $r->execute([$fid]); if (collection_arrears($d, $r->fetchColumn())['late'] > 0.004) $lateN++; }
 $cur = school_month_now(); $missNow = 0.0; foreach (SCHOOL_MONTHS as $mm => $_) if ($mm <= $cur) $missNow += $ex[$mm] - $co[$mm];

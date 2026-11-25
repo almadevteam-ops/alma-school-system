@@ -47,13 +47,13 @@ function collection_data(?array $ids = null, ?int $ts = null, array $extra = [])
     $n = max(1, min(12, (int)$f['months']));
     $eff = max(0.0, (float)$f['monthly'] - (float)$f['disc']);
     $cap = ((int)$f['ns'] > 0 && (int)$f['ns'] === (int)$f['nl']) ? max(0, (int)$f['lm'] - 1) : $n;   // כל התלמידות בתיק עזבו: החיוב נעצר מחודש העזיבה
-    $out[(int)$f['id']] = ['monthly' => $eff, 'base' => (float)$f['monthly'], 'disc' => (float)$f['disc'], 'months' => $n, 'cap' => min($n, $cap), 'tuition' => 0.0, 'marks' => [],
+    $out[(int)$f['id']] = ['monthly' => $eff, 'base' => (float)$f['monthly'], 'disc' => (float)$f['disc'], 'months' => $n, 'cap' => min($n, $cap), 'tuition' => 0.0, 'marks' => [], 'ma' => [], 'mo' => [],
       'cur' => $cur, 'tuition_due' => 0.0, 'balance_year' => 0.0, 'credit' => 0.0, 'charges' => 0.0, 'paid' => 0.0, 'cpaid' => 0.0, 'balance' => 0.0, 'assigned' => array_fill(1, $n, 0.0), 'pool' => 0.0, 'cov' => [], 'status' => []];
   }
   if (!$out) return [];
   $in = implode(',', array_fill(0, count($out), '?')); $keys = array_keys($out);
-  $st = $pdo->prepare("SELECT family_id, month, mark FROM month_marks WHERE family_id IN ($in)"); $st->execute($keys);
-  foreach ($st->fetchAll() as $r) $out[(int)$r['family_id']]['marks'][(int)$r['month']] = (string)$r['mark'];
+  $st = $pdo->prepare("SELECT family_id, month, mark, amount FROM month_marks WHERE family_id IN ($in)"); $st->execute($keys);
+  foreach ($st->fetchAll() as $r) { $out[(int)$r['family_id']]['marks'][(int)$r['month']] = (string)$r['mark']; if ($r['amount'] !== null) $out[(int)$r['family_id']]['ma'][(int)$r['month']] = (float)$r['amount']; }
   $st = $pdo->prepare("SELECT family_id, SUM(amount - disc_amt) s FROM charges WHERE voided_at IS NULL AND mark <> 'n' AND family_id IN ($in) GROUP BY family_id"); $st->execute($keys);
   foreach ($st->fetchAll() as $r) $out[(int)$r['family_id']]['charges'] = (float)$r['s'];
   $st = $pdo->prepare("SELECT family_id, charge_id, for_month, SUM(amount) s FROM payments WHERE voided_at IS NULL AND family_id IN ($in) GROUP BY family_id, charge_id, for_month"); $st->execute($keys);
@@ -71,28 +71,29 @@ function collection_data(?array $ids = null, ?int $ts = null, array $extra = [])
   }
   foreach ($out as &$o) {
     // 1) כל תשלום ששויך לחודש מכסה אותו עד התעריף; העודף עובר ל"מאגר". 2) המאגר ממלא קודם את החודשים הישנים שחסרים (חוב), ואז קדימה (זכות).
-    $pool = $o['pool']; $cur = $o['cur']; $c = []; $na = []; $billed = 0; $due = 0.0;
+    $pool = $o['pool']; $cur = $o['cur']; $c = []; $na = []; $billed = 0; $due = 0.0; $tu = 0.0;
     for ($m = 1; $m <= $o['months']; $m++) {
       $mk = $o['marks'][$m] ?? '';
       $na[$m] = $m > $o['cap'] || $mk === 'n';
+      $o['mo'][$m] = $o['ma'][$m] ?? $o['monthly'];   // חיוב מותאם לחודש (אם הוגדר) במקום התעריף הרגיל
       $a = $o['assigned'][$m];
-      if ($na[$m] || $o['monthly'] <= 0.004) { $c[$m] = $a; continue; }
-      $c[$m] = min($a, $o['monthly']); $pool += $a - $c[$m];
+      if ($na[$m] || $o['mo'][$m] <= 0.004) { $c[$m] = $a; continue; }
+      $c[$m] = min($a, $o['mo'][$m]); $pool += $a - $c[$m];
     }
     for ($m = 1; $m <= $o['months'] && $pool > 0.004; $m++) {
       $mk = $o['marks'][$m] ?? '';
-      if ($na[$m] || $o['monthly'] <= 0.004 || $mk === 'w' || $mk === 'r') continue;
-      $need = $o['monthly'] - $c[$m];
+      if ($na[$m] || $o['mo'][$m] <= 0.004 || $mk === 'w' || $mk === 'r') continue;
+      $need = $o['mo'][$m] - $c[$m];
       if ($need > 0.004) { $t = min($need, $pool); $c[$m] += $t; $pool -= $t; }
     }
     for ($m = 1; $m <= $o['months']; $m++) {
       $mk = $o['marks'][$m] ?? ''; $cv = $c[$m];
       $o['cov'][$m] = round($cv, 2);
-      if (!$na[$m]) { $billed++; if ($m <= $cur) $due += $o['monthly']; }
-      $full = $o['monthly'] > 0 && $cv >= $o['monthly'] - 0.004;
-      $o['status'][$m] = ($na[$m] || $o['monthly'] <= 0) ? 'na' : ($full ? 'paid' : ($mk === 'r' ? 'ref' : ($mk === 'w' ? 'wip' : ($m > $cur ? 'fut' : ($cv > 0.004 ? 'part' : 'none')))));
+      if (!$na[$m]) { $billed++; $tu += $o['mo'][$m]; if ($m <= $cur) $due += $o['mo'][$m]; }
+      $full = $o['mo'][$m] > 0 && $cv >= $o['mo'][$m] - 0.004;
+      $o['status'][$m] = ($na[$m] || $o['mo'][$m] <= 0) ? 'na' : ($full ? 'paid' : ($mk === 'r' ? 'ref' : ($mk === 'w' ? 'wip' : ($m > $cur ? 'fut' : ($cv > 0.004 ? 'part' : 'none')))));
     }
-    $o['billed'] = $billed; $o['tuition'] = round($o['monthly'] * $billed, 2); $o['tuition_due'] = round($due, 2);
+    $o['billed'] = $billed; $o['tuition'] = round($tu, 2); $o['tuition_due'] = round($due, 2);
     $o['paid'] = round($o['paid'], 2); $o['cpaid'] = round($o['cpaid'], 2);
     $o['balance_year'] = round($o['tuition'] + $o['charges'] - $o['paid'], 2);
     $o['balance'] = round($due + $o['charges'] - $o['paid'], 2);   // חוב נכון להיום: חודשים עתידיים אינם נספרים, ותשלום מראש מופיע כזכות (שלילי)
@@ -112,7 +113,7 @@ function collection_arrears(array $s, $collectDay = null, ?int $ts = null): arra
   $behind = 0; $gap = 0.0; $ms = [];
   for ($m = 1; $m <= $due; $m++) {
     if (in_array($s['status'][$m] ?? 'na', ['na', 'wip', 'ref'], true)) continue;
-    $miss = $s['monthly'] - (float)$s['cov'][$m];
+    $miss = ($s['mo'][$m] ?? $s['monthly']) - (float)$s['cov'][$m];
     if ($miss > 0.004) { $behind++; $gap += $miss; $ms[] = SCHOOL_MONTHS[$m]; }
   }
   $cgap = max(0.0, round((float)$s['charges'] - (float)$s['cpaid'], 2));
@@ -139,7 +140,7 @@ function month_cells(array $s, bool $big = false): string {
     $amt = (float)$s['cov'][$m];
     if ($big) {
       $t = $x === 'na' ? '–' : number_format($amt, fmod($amt, 1) == 0.0 ? 0 : 2);
-      $h .= '<div class="mb ' . $x . '" title="' . e(SCHOOL_MONTHS[$m] . ': ' . money($amt)) . '"><small>' . e(SCHOOL_MONTHS[$m]) . '</small><b>' . e($t) . '</b></div>';
+      $h .= '<div class="mb ' . $x . '" title="' . e(SCHOOL_MONTHS[$m] . ': ' . money($amt) . (isset($s['ma'][$m]) ? ' (חיוב מותאם: ' . money($s['ma'][$m]) . ')' : '')) . '"><small>' . e(SCHOOL_MONTHS[$m]) . '</small><b>' . e($t) . '</b></div>';
       continue;
     }
     $sym = ['paid' => '✓', 'part' => '½', 'none' => '·', 'na' => '–', 'wip' => '…', 'ref' => '↺', 'fut' => '·'][$x];
@@ -205,7 +206,7 @@ function colimp_parse(string $raw): array {
       $seen[$s['id']] = true; $row['students'][] = (int)$s['id']; $row['student_names'][] = $s['name'];
     }
     $m = money_in($g('monthly')); if ($m === null) { $row['errors'][] = 'תעריף לא תקין: ' . $g('monthly'); } else $row['monthly'] = $m;
-    if ($g('months') !== '') { $mo = (int)$g('months'); if (in_array($mo, [10, 12], true)) $row['months'] = $mo; else $row['errors'][] = 'חודשים חייב להיות 10 או 12'; }
+    if ($g('months') !== '') { $mo = (int)$g('months'); if ($mo >= 1 && $mo <= 12) $row['months'] = $mo; else $row['errors'][] = 'חודשים חייב להיות בין 1 ל-12'; }
     $meth = $g('method');
     if ($meth !== '') { $key = trim(str_replace(['״', '"', '׳', "'", '-', '.'], '', $meth)); $row['method'] = COLIMP_METHODS[$key] ?? (isset(PAY_METHODS[$meth]) ? $meth : ''); if ($row['method'] === '') $row['errors'][] = 'צורת תשלום לא מוכרת: ' . $meth; }
     $d = $g('day'); if ($d !== '') { if (ctype_digit($d) && (int)$d >= 1 && (int)$d <= 31) $row['day'] = (int)$d; else $row['errors'][] = 'יום גבייה לא תקין: ' . $d; }

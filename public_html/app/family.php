@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = mb_substr(trim((string)($_POST['name'] ?? '')), 0, 120);
     if ($name === '') $err = 'נא למלא שם משפחה.';
     elseif ($monthly === null) $err = 'התעריף החודשי לא תקין (מספר חיובי).';
-    elseif (!in_array($months, [10, 12], true)) $err = 'מספר החודשים חייב להיות 10 או 12.';
+    elseif ($months < 1 || $months > 12) $err = 'מספר החודשים חייב להיות בין 1 ל-12.';
     elseif ($day !== '' && (!ctype_digit($day) || (int)$day < 1 || (int)$day > 31)) $err = 'יום גבייה חייב להיות בין 1 ל-31.';
     elseif ($method !== '' && !isset(PAY_METHODS[$method])) $err = 'צורת תשלום לא תקינה.';
     else {
@@ -92,11 +92,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('family.php?id=' . $id . '&open=pay&m=' . rawurlencode('התשלום בוטל (נשמר ביומן).'));
   } elseif ($act === 'month_set') {
     $m = (int)($_POST['month'] ?? 0); $op = (string)($_POST['op'] ?? '');
-    if ($m < 1 || $m > (int)$fam['months'] || !in_array($op, ['paid', 'w', 'r', 'n', 'clear'], true)) $err = 'בחירת חודש או פעולה לא תקינה.';
+    if ($m < 1 || $m > (int)$fam['months'] || !in_array($op, ['paid', 'w', 'r', 'n', 'clear', 'amt'], true)) $err = 'בחירת חודש או פעולה לא תקינה.';
+    elseif ($op === 'amt' && (($am = money_in((string)($_POST['amount'] ?? ''))) === null || $am < 0)) $err = 'יש להזין סכום חיוב לחודש (מספר, 0 ומעלה).';
     else {
       $cur = collection_data([$id])[$id];
       if ($op === 'paid') {
-        $miss = round($cur['monthly'] - (float)$cur['cov'][$m], 2);
+        $miss = round(($cur['mo'][$m] ?? $cur['monthly']) - (float)$cur['cov'][$m], 2);
         if ($miss <= 0.004) $err = 'החודש כבר שולם במלואו.';
         else {
           $pdo->prepare('INSERT INTO payments (family_id, charge_id, for_month, amount, paid_on, method, ref, note, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
@@ -104,6 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $pdo->prepare('DELETE FROM month_marks WHERE family_id = ? AND month = ?')->execute([$id, $m]);
           audit('month_paid', 'family', (string)$id, SCHOOL_MONTHS[$m] . " $miss");
         }
+      } elseif ($op === 'amt') {
+        $old = $pdo->prepare('SELECT mark FROM month_marks WHERE family_id = ? AND month = ?'); $old->execute([$id, $m]); $om = (string)($old->fetchColumn() ?: ''); if ($om === 'n') $om = '';
+        $pdo->prepare('REPLACE INTO month_marks (family_id, month, mark, amount, updated_by, updated_at) VALUES (?,?,?,?,?,?)')->execute([$id, $m, $om, $am, $u['id'], now()]); audit('month_amount', 'family', (string)$id, SCHOOL_MONTHS[$m] . ' ' . $am);
       } elseif ($op === 'clear') { $pdo->prepare('DELETE FROM month_marks WHERE family_id = ? AND month = ?')->execute([$id, $m]); audit('month_mark', 'family', (string)$id, SCHOOL_MONTHS[$m] . ' נוקה'); }
       else { $pdo->prepare('REPLACE INTO month_marks (family_id, month, mark, updated_by, updated_at) VALUES (?,?,?,?,?)')->execute([$id, $m, $op, $u['id'], now()]); audit('month_mark', 'family', (string)$id, SCHOOL_MONTHS[$m] . ' ' . $op); }
       if (!$err) redirect('family.php?id=' . $id . '&m=' . rawurlencode('החודש עודכן.'));
@@ -196,11 +200,12 @@ page_head($fam['name']);
   <?php if (in_array($u['role'], ['admin', 'finance'], true) || can_edit()): ?>
   <form method="post" class="bar mset"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="act" value="month_set">
     <label>חודש<select name="month"><?php foreach (SCHOOL_MONTHS as $k => $v) if ($k <= (int)$fam['months']) echo '<option value="' . $k . '">' . e($v) . '</option>'; ?></select></label>
-    <label>פעולה<select name="op"><option value="paid">סימון שולם (רושם תשלום לחוסר)</option><option value="w">בטיפול</option><option value="r">החזר</option><option value="n">לא רלוונטי (ללא חיוב)</option><option value="clear">ניקוי סימון</option></select></label>
+    <label>פעולה<select name="op"><option value="paid">סימון שולם (רושם תשלום לחוסר)</option><option value="amt">חיוב מותאם לחודש (למשל חצי חודש)</option><option value="w">בטיפול</option><option value="r">החזר</option><option value="n">לא רלוונטי (ללא חיוב)</option><option value="clear">ניקוי סימון</option></select></label>
+    <label>סכום חיוב לחודש (₪) – לפעולת "חיוב מותאם"<input name="amount" inputmode="decimal" placeholder="<?= e(money($sum['monthly'] ?? 0)) ?>"></label>
     <button class="sec">עדכון חודש</button>
     <?php if (pay_url() !== ''): ?><a class="btn" href="<?= e(pay_url()) ?>" target="_blank" rel="noopener">💳 תשלום מאובטח</a><?php endif; ?>
   </form>
-  <p class="mu">…=בטיפול · ↺=החזר · –=לא רלוונטי. "בטיפול" ו"החזר" לא נספרים כאיחור; "לא רלוונטי" מוריד את החודש מהחיוב.</p>
+  <p class="mu">…=בטיפול · ↺=החזר · –=לא רלוונטי. "בטיפול" ו"החזר" לא נספרים כאיחור; "לא רלוונטי" מוריד את החודש מהחיוב. "חיוב מותאם" קובע סכום אחר לחודש אחד בלבד (למשל חצי מהתעריף לתלמידה שהצטרפה באמצע החודש); "ניקוי סימון" מחזיר לתעריף הרגיל.</p>
   <?php endif; ?>
 </div>
 <?php if ($fam['method'] === 'hok_card'): $cp = family_contacts([$id])[$id] ?? []; $p1 = ($cp['m'][2] ?? '') ?: ($cp['f'][2] ?? ''); ?>
@@ -266,7 +271,8 @@ sec_open('rem', 'תזכורות', $remAct ? $remAct . ' פעילות' : 'להז�
   <div class="fg">
     <label>שם משפחה<input name="name" maxlength="120" value="<?= e($fam['name']) ?>" required></label>
     <label>תעריף חודשי למשפחה (₪)<input name="monthly" inputmode="decimal" value="<?= e((float)$fam['monthly'] == 0 ? '0' : rtrim(rtrim((string)$fam['monthly'], '0'), '.')) ?>"></label>
-    <label>מספר חודשים<select name="months"><option value="10"<?= (int)$fam['months'] === 10 ? ' selected' : '' ?>>10 (ספטמבר–יוני)</option><option value="12"<?= (int)$fam['months'] === 12 ? ' selected' : '' ?>>12 (ספטמבר–אוגוסט)</option></select></label>
+    <label>מספר חודשים (מספטמבר ואילך)<select name="months"><?php foreach (SCHOOL_MONTHS as $k => $v) echo '<option value="' . $k . '"' . ((int)$fam['months'] === $k ? ' selected' : '') . '>' . $k . ' (ספטמבר–' . e($v) . ')</option>'; ?></select></label>
+    <p class="mu">תלמידה שמשלמת רק חלק מהחודשים: בוחרים כאן את מספר החודשים (למשל 8 = ספטמבר–אפריל). אם החודשים שלא משלמים אינם בסוף התקופה, משאירים 10 ומסמנים בכרטיס "לא רלוונטי" לכל חודש שפטור.</p>
     <label>צורת תשלום<select name="method"><option value="">לא נקבע</option><?php foreach (PAY_METHODS as $k => $v) echo '<option value="' . $k . '"' . ($fam['method'] === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
     <label>יום גבייה בחודש<input name="collect_day" inputmode="numeric" maxlength="2" value="<?= e((string)($fam['collect_day'] ?? '')) ?>"></label>
     <label>מי משלם<select name="payer"><?php
