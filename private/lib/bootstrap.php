@@ -101,7 +101,7 @@ function session_boot(): void {
   ini_set('session.gc_probability', '1');
   ini_set('session.gc_divisor', '50');
   ini_set('session.gc_maxlifetime', '36000');
-  session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => is_https(), 'httponly' => true, 'samesite' => 'Strict']);
+  session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => is_https(), 'httponly' => true, 'samesite' => 'Lax']);
   session_start();
   if (isset($_SESSION['uid'])) {
     $ua = hash('sha256', (string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
@@ -120,7 +120,7 @@ function session_wipe(): void {
   session_boot_fresh();
 }
 function session_boot_fresh(): void {
-  session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => is_https(), 'httponly' => true, 'samesite' => 'Strict']);
+  session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => is_https(), 'httponly' => true, 'samesite' => 'Lax']);
   session_start();
   session_regenerate_id(true);
 }

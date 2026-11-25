@@ -26,6 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if (!empty($row['totp_enabled'])) {
         session_regenerate_id(true);
         $_SESSION['p2'] = ['id' => (int)$row['id'], 't' => time()];
+        // עוגיית ההמתנה לקוד נשמרת ל-15 דקות גם אם האפליקציה/הדפדפן נסגרים בזמן שהמשתמשת עוברת למייל לקחת את הקוד
+        setcookie(session_name(), session_id(), ['expires' => time() + 900, 'path' => '/', 'secure' => is_https(), 'httponly' => true, 'samesite' => 'Lax']);
         if (($row['mfa_method'] ?? 'app') === 'email') {
           [$sent, $why] = mfa_send_code($row, true);
           if (!$sent) { unset($_SESSION['p2']); $err = $why; goto render; }
