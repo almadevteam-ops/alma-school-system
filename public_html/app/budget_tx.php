@@ -74,23 +74,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     [$ad, $un, $ud, $rp] = budget_commit($items, array_map('intval', (array)($_POST['pick'] ?? [])), $by); unset($_SESSION['bpdf'], $_SESSION['bpdf_kind']);
     audit('budget_import', 'budget', '', "PDF/אשראי: יובאו $ad, עודכנו $ud שורות העברה באינטרנט, דביטים שפורטו $rp, ללא שיוך $un");
     $flash("יובאו $ad תנועות מה-PDF" . ($ud ? " ופורטו $ud שורות \"העברה באינטרנט\" מדוח הבנק" : '') . ($rp ? ". $rp שורות \"דביט כא\"ל\" מדוח הבנק הוחלפו ברכישות עצמן" : '') . ($un ? ". $un מהן לא שויכו אוטומטית. כדי לשייך אותן ידנית (והמערכת תלמד לפעם הבאה) יש לסנן קטגוריה \"לא משויך\"." : ' ושויכו כולן אוטומטית.'));
-  } elseif ($act === 'import') {
-    $fl = $_FILES['file'] ?? null;
-    if (!$fl || ($fl['error'] ?? 4) !== UPLOAD_ERR_OK) $flash(upload_error_text((int)($fl['error'] ?? UPLOAD_ERR_NO_FILE)), false);
-    elseif (!preg_match('/\.(xlsx|csv|xls|htm|html)$/i', (string)$fl['name'])) $flash('אפשר להעלות PDF, xlsx, xls (מהבנק) או csv.', false);
-    elseif ((int)$fl['size'] > 10 * 1024 * 1024) $flash('הקובץ גדול מדי (מעל 10MB).', false);
-    elseif (!is_uploaded_file($fl['tmp_name']) && !(defined('TESTING_UPLOADS') && TESTING_UPLOADS)) $flash('קובץ לא תקין.', false);
-    if (preg_match('/\.xlsx$/i', (string)$fl['name'])) {   // דוח פירוט עסקאות של חברת האשראי: תצוגה מקדימה והתאמה לדביטים
-      try { $card = budget_card_rows(xlsx_rows((string)$fl['tmp_name'])); } catch (Throwable $t) { $card = null; }
-      if ($card) {
-        if (!budget_has_card()) $flash('כדי לייבא דוח אשראי יש להריץ קודם "עדכון מסד נתונים" (מנהל מערכת).', false);
-        $items = budget_card_prepare($card); $_SESSION['bpdf'] = $items; $_SESSION['bpdf_kind'] = 'card';
-        audit('budget_card_preview', 'budget', '', 'כרטיס ' . $card['last4'] . ': ' . count($items) . ' עסקאות'); redirect('budget_tx.php?pdf=1#pdfprev');
+  } elseif ($act === 'import') {   // כמה קבצים יחד: דוחות בנק / אשראי (xlsx, csv, xls) ו-PDF (נקראים בדפדפן ומגיעים ב-rows)
+    $F = $_FILES['file'] ?? null; $fls = [];
+    if ($F && is_array($F['name'])) foreach ($F['name'] as $k => $nm) $fls[] = ['name' => (string)$nm, 'tmp_name' => (string)$F['tmp_name'][$k], 'error' => (int)$F['error'][$k], 'size' => (int)$F['size'][$k]];
+    elseif ($F) $fls[] = $F;
+    $fls = array_values(array_filter($fls, fn($f) => (int)($f['error'] ?? 4) !== UPLOAD_ERR_NO_FILE));
+    $rowsJ = json_decode((string)($_POST['rows'] ?? ''), true); $rowsJ = is_array($rowsJ) ? $rowsJ : [];
+    if (!$fls && !$rowsJ) $flash('בחרי קובץ לייבוא.', false);
+    if (count($fls) > 20) $flash('אפשר לייבא עד 20 קבצים בכל פעם.', false);
+    if (count($rowsJ) > BUDGET_MAX_IMPORT) $flash('יותר מדי שורות ב-PDF (מקסימום ' . BUDGET_MAX_IMPORT . ').', false);
+    $ad = $du = $bd = 0; $nf = 0; $errs = []; $cards = [];
+    foreach ($fls as $fl) {
+      $nm = (string)$fl['name'];
+      if ((int)$fl['error'] !== UPLOAD_ERR_OK) { $errs[] = $nm . ': ' . upload_error_text((int)$fl['error']); continue; }
+      if (!preg_match('/\.(xlsx|csv|xls|htm|html)$/i', $nm)) { $errs[] = $nm . ': סוג קובץ לא נתמך'; continue; }
+      if ((int)$fl['size'] > 10 * 1024 * 1024) { $errs[] = $nm . ': הקובץ גדול מדי (מעל 10MB)'; continue; }
+      if (!is_uploaded_file($fl['tmp_name']) && !(defined('TESTING_UPLOADS') && TESTING_UPLOADS)) { $errs[] = $nm . ': קובץ לא תקין'; continue; }
+      if (preg_match('/\.xlsx$/i', $nm)) {   // דוח פירוט עסקאות של חברת האשראי: ממתין לתצוגה מקדימה והתאמה לדביטים
+        try { $card = budget_card_rows(xlsx_rows((string)$fl['tmp_name'])); } catch (Throwable $t) { $card = null; }
+        if ($card) {
+          if (!budget_has_card()) { $errs[] = $nm . ': כדי לייבא דוח אשראי יש להריץ קודם "עדכון מסד נתונים" (מנהל מערכת)'; continue; }
+          if (isset($cards[$card['last4']])) $cards[$card['last4']]['tx'] = array_merge($cards[$card['last4']]['tx'], $card['tx']); else $cards[$card['last4']] = $card;
+          $nf++; continue;
+        }
       }
+      try { [$a1, $d1, $b1] = budget_import((string)$fl['tmp_name'], $nm, $by); $ad += $a1; $du += $d1; $bd += $b1; $nf++; }
+      catch (Throwable $t) { $errs[] = $nm . ': ' . $t->getMessage(); }
     }
-    try { [$ad, $du, $bd] = budget_import((string)$fl['tmp_name'], (string)$fl['name'], $by); }
-    catch (Throwable $t) { $flash('הייבוא נכשל: ' . $t->getMessage(), false); }
-    audit('budget_import', 'budget', '', "יובאו $ad, כפולות $du, לא תקינות $bd"); $flash("יובאו $ad תנועות" . ($du ? ", דולגו $du שורות שכבר קיימות" : '') . ($bd ? ", $bd שורות לא תקינות (תאריך או סכום חסרים) לא יובאו" : '') . '.');
+    $items = $rowsJ ? budget_prepare($rowsJ) : [];   // PDF: אחרי דוחות הבנק, כדי לפרט את שורות "העברה באינטרנט" שזה עתה יובאו
+    foreach ($cards as $c0) $items = array_merge($items, budget_card_prepare($c0));
+    audit('budget_import', 'budget', '', "קבצים: $nf, יובאו $ad, כפולות $du, לא תקינות $bd" . ($cards ? ', דוחות אשראי: ' . count($cards) : '') . ($rowsJ ? ', PDF: ' . count($rowsJ) . ' שורות' : '') . ($errs ? ', שגיאות: ' . count($errs) : ''));
+    $sum = ($nf || $rowsJ ? 'יובאו ' . $ad . ' תנועות' . ($du ? ", דולגו $du שורות שכבר קיימות" : '') . ($bd ? ", $bd שורות לא תקינות (תאריך או סכום חסרים) לא יובאו" : '') . '.' : '') . ($errs ? ' לא יובאו: ' . implode(' · ', array_slice($errs, 0, 6)) . (count($errs) > 6 ? '…' : '') : '');
+    if ($items) {
+      $_SESSION['bpdf'] = $items; $_SESSION['bpdf_kind'] = ($cards ? ($rowsJ ? 'mix' : 'card') : ''); $_SESSION['bmsg'] = [!$errs, trim(($ad || $du || $bd || $errs ? $sum . ' ' : '') . 'יש תנועות שממתינות לאישור בתצוגה המקדימה למטה.')];
+      redirect('budget_tx.php?pdf=1#pdfprev');
+    }
+    if (!$nf && !$rowsJ) $flash(trim($sum) ?: 'לא יובא דבר.', false);
+    if ($rowsJ && !$items) $errs[] = 'ב-PDF לא נמצאו תנועות תקינות (תאריך, שם וסכום)';
+    $flash(trim($sum) ?: 'לא יובא דבר.', !$errs);
   }
   redirect($self);
 }
@@ -154,10 +175,10 @@ page_head('תקציב – תנועות');
 <form method="post" class="bar card" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="bulk">
   <label>שיוך כל התנועות שמוצגות בסינון (<?= (int)$tot['n'] ?>) לקטגוריה<select name="c"><?= $opt($cats, '', '— בחרי —') ?></select></label><button class="sec" data-confirm="לשייך את כל <?= (int)$tot['n'] ?> התנועות שבסינון לקטגוריה שנבחרה?">שייכי</button></form>
 <?php else: ?><div class="card"><p>לא נמצאו תנועות.</p></div><?php endif; ?>
-<?php $pv = $_SESSION['bpdf'] ?? null; if (is_array($pv) && isset($_GET['pdf'])): $nNew = count(array_filter($pv, fn($x) => !$x['dup'])); $nUn = count(array_filter($pv, fn($x) => !$x['dup'] && $x['cat'] === '')); $nUp = count(array_filter($pv, fn($x) => !$x['dup'] && !empty($x['upd']))); $isCard = ($_SESSION['bpdf_kind'] ?? '') === 'card'; $nGr = count(array_filter($pv, fn($x) => !$x['dup'] && !empty($x['grp']))); ?>
+<?php $pv = $_SESSION['bpdf'] ?? null; if (is_array($pv) && isset($_GET['pdf'])): $nNew = count(array_filter($pv, fn($x) => !$x['dup'])); $nUn = count(array_filter($pv, fn($x) => !$x['dup'] && $x['cat'] === '')); $nUp = count(array_filter($pv, fn($x) => !$x['dup'] && !empty($x['upd']))); $kind = (string)($_SESSION['bpdf_kind'] ?? ''); $nGr = count(array_filter($pv, fn($x) => !$x['dup'] && !empty($x['grp']))); ?>
 <form method="post" class="card" action="budget_tx.php" id="pdfprev"><?= csrf_field() ?>
-  <h2>תצוגה מקדימה – <?= $isCard ? 'ייבוא דוח אשראי' : 'ייבוא מ-PDF' ?></h2>
-  <?php if ($isCard): ?><p class="mu"><?= $nGr ?> מהרכישות הותאמו לשורות "דביט כא\"ל" מדוח הבנק (הסכום הכולל זהה בדיוק): שורת הדביט תוחלף ברכישות עצמן, כך שלא יהיה כפל. רכישות שלא הותאמו יתווספו כרגיל, ואם דוח הבנק ייובא אחר כך הן יסתדרו מולו.</p><?php endif; ?>
+  <h2>תצוגה מקדימה – <?= $kind === 'card' ? 'ייבוא דוח אשראי' : ($kind === 'mix' ? 'ייבוא קבצים' : 'ייבוא מ-PDF') ?></h2>
+  <?php if ($nGr): ?><p class="mu"><?= $nGr ?> מהרכישות הותאמו לשורות "דביט כא\"ל" מדוח הבנק (הסכום הכולל זהה בדיוק): שורת הדביט תוחלף ברכישות עצמן, כך שלא יהיה כפל. רכישות שלא הותאמו יתווספו כרגיל, ואם דוח הבנק ייובא אחר כך הן יסתדרו מולו.</p><?php endif; ?>
   <p><b><?= count($pv) ?></b> תנועות בקובץ: <b><?= $nNew ?></b> חדשות<?= $nUp ? ' (מהן ' . $nUp . ' מפרטות שורות "העברה באינטרנט" שכבר יובאו מדוח הבנק, ולא יתווספו פעמיים)' : '' ?><?= count($pv) - $nNew ? ', ' . (count($pv) - $nNew) . ' כבר קיימות (ידולגו)' : '' ?>. <b><?= $nNew - $nUn ?></b> שויכו אוטומטית לקטגוריה<?= $nUn ? ', <b>' . $nUn . '</b> ללא שיוך (יישארו בטבלה לשיוך ידני)' : '' ?>.</p>
   <div class="sc"><table><tr><th>ייבוא</th><th>תאריך</th><th>שם</th><th>תיאור</th><th>אסמכתה</th><th>סכום</th><th>קטגוריה</th></tr>
   <?php foreach ($pv as $i => $x): ?>
@@ -170,7 +191,7 @@ page_head('תקציב – תנועות');
 </form>
 <?php endif; ?>
 <details class="card" id="imp"><summary><b>ייבוא מ-Excel או CSV</b></summary>
-  <form method="post" enctype="multipart/form-data" class="bar" action="<?= e($self) ?>" data-bpdf><?= csrf_field() ?><input type="hidden" name="act" value="import"><input type="hidden" name="rows" value=""><label>קובץ (PDF / xlsx / xls / csv)<input type="file" name="file" accept=".pdf,.xlsx,.csv,.xls,.htm,.html" required></label><button>ייבוא</button> <span id="bpdf-msg" class="mu" role="status"></span></form>
+  <form method="post" enctype="multipart/form-data" class="bar" action="<?= e($self) ?>" data-bpdf><?= csrf_field() ?><input type="hidden" name="act" value="import"><input type="hidden" name="rows" value=""><label>קבצים (אפשר לבחור עד 20 יחד: PDF / xlsx / xls / csv)<input type="file" name="file[]" accept=".pdf,.xlsx,.csv,.xls,.htm,.html" multiple required></label><button>ייבוא</button> <span id="bpdf-msg" class="mu" role="status"></span></form>
   <?php $nIb = (int)db()->query("SELECT COUNT(*) FROM budget_tx WHERE name = '" . BUDGET_IB . "' AND category = ''")->fetchColumn(); if ($nIb > 0): ?><p class="aptn"><b><?= $nIb ?></b> שורות "העברה באינטרנט" מדוח הבנק ממתינות לפירוט. יש להעלות כאן את <b>רשימת ההעברות</b> (PDF) מהבנק, והן יתמלאו בשם הספק, בתיאור ובקטגוריה בלי להוסיף תנועות כפולות.</p><?php endif; ?>
   <p class="mu"><b>קובץ PDF:</b> רשימת העברות או תנועות חשבון מהבנק. המערכת קוראת את התנועות, משייכת לקטגוריות לפי הכללים, ומציגה תצוגה מקדימה לאישור. מה שלא זוהה נשאר "לא משויך" לשיוך ידני.</p>
   <p class="mu">עמודות: תאריך, שם, תיאור, אסמכתה, סכום, קטגוריה, יחידה, סוג (הכנסה / הוצאה), חשבונית, קבלה. נדרשות לפחות "תאריך" ו"סכום". שורות בלי קטגוריה ישויכו אוטומטית לפי מילות מפתח. שורות זהות לתנועה קיימת ידולגו, כך שאפשר לייבא שוב קובץ שיוצא מכאן. עד <?= BUDGET_MAX_IMPORT ?> שורות בקובץ.</p>

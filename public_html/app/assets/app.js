@@ -734,13 +734,18 @@
   var msg = document.getElementById('bpdf-msg');
   function say(t) { if (msg) msg.textContent = t; }
   form.addEventListener('submit', function (e) {
-    var fi = form.querySelector('input[type=file]'), f = fi && fi.files && fi.files[0];
-    if (!f || !/\.pdf$/i.test(f.name)) return;       // xlsx / csv – שליחה רגילה לשרת
-    e.preventDefault(); say('קורא את ה-PDF…');
-    readPdf(f).then(function (rows) {
-      if (!rows.length) { say('לא זוהו תנועות בקובץ. ודאי שזה PDF של רשימת העברות או תנועות חשבון (עם עמודות תאריך וסכום/חובה/זכות).'); return; }
-      form.querySelector('[name=act]').value = 'pdf_preview'; form.querySelector('[name=rows]').value = JSON.stringify(rows);
-      fi.disabled = true; form.submit();
+    var fi = form.querySelector('input[type=file]'), all = fi && fi.files ? Array.prototype.slice.call(fi.files) : [];
+    var pdfs = all.filter(function (f) { return /\.pdf$/i.test(f.name); }), rest = all.filter(function (f) { return !/\.pdf$/i.test(f.name); });
+    if (!pdfs.length) return;       // xlsx / csv בלבד – שליחה רגילה לשרת (כמה קבצים יחד)
+    e.preventDefault(); var rows = [], chain = Promise.resolve();
+    pdfs.forEach(function (f, i) {
+      chain = chain.then(function () { say('קורא PDF ' + (i + 1) + ' מתוך ' + pdfs.length + '…'); return readPdf(f); }).then(function (r) { rows = rows.concat(r); });
+    });
+    chain.then(function () {
+      if (!rows.length) { say('לא זוהו תנועות ב-' + (pdfs.length > 1 ? 'קבצי ה-PDF' : 'קובץ ה-PDF') + '. ודאי שאלה PDF של רשימת העברות או תנועות חשבון (עם עמודות תאריך וסכום/חובה/זכות).'); return; }
+      form.querySelector('[name=act]').value = 'import'; form.querySelector('[name=rows]').value = JSON.stringify(rows);
+      if (rest.length && window.DataTransfer) { var dt = new DataTransfer(); rest.forEach(function (f) { dt.items.add(f); }); fi.files = dt.files; } else fi.disabled = true;
+      form.submit();
     }).catch(function (err) { say('קריאת ה-PDF נכשלה: ' + (err && err.message ? err.message : err)); });
   });
 })();
