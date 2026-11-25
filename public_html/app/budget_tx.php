@@ -18,6 +18,28 @@ if (($_GET['csv'] ?? '') === '1') {
   audit('budget_export', 'budget', '', "ייצוא $n תנועות"); exit;
 }
 
+if (($_GET['pdf'] ?? '') === '1') {   // ייצוא PDF של התנועות לפי הסינון
+  $q = db()->prepare("SELECT * FROM budget_tx $wh ORDER BY tx_date, id LIMIT 3000"); $q->execute($wa); $all = $q->fetchAll();
+  $d = new PdfDoc(dirname(__DIR__, 2) . '/private/fonts');
+  $fit = function (string $t, float $sz, float $mw) use ($d): string { $t = trim(preg_replace('/\s+/u', ' ', $t)); if ($d->width($t, $sz) <= $mw) return $t; while ($t !== '' && $d->width($t . '…', $sz) > $mw) $t = mb_substr($t, 0, -1); return $t . '…'; };
+  $cols = [['תאריך', 50, 52], ['שם', 110, 112], ['תיאור', 110, 112], ['סכום', 62, 64], ['קטגוריה', 100, 102], ['יחידה', 40, 42]];   // [כותרת, רוחב טקסט, רוחב עמודה]
+  $R = 555.0; $y = 0.0; $pg = 0; $inc = 0.0; $exp = 0.0; foreach ($all as $r) { if ($r['is_income']) $inc += (float)$r['amount']; else $exp += (float)$r['amount']; }
+  $head = function () use ($d, &$y, &$pg, $cols, $R, $all, $inc, $exp) {
+    $d->addPage(); $pg++; $y = 46.0;
+    $d->text('תקציב – תנועות', $R, $y, 16, 'b', 'r'); $d->text(date('d/m/Y'), 40, $y, 9, 'r', 'l'); $y += 18;
+    if ($pg === 1) { $d->text(count($all) . ' תנועות · הוצאות ' . number_format($exp, 2) . ' · הכנסות ' . number_format($inc, 2), $R, $y, 10, 'r', 'r'); $y += 18; }
+    $x = $R; foreach ($cols as $c) { $d->text($c[0], $x, $y, 9, 'b', 'r'); $x -= $c[2]; } $y += 5; $y += 10;
+  };
+  $head();
+  foreach ($all as $r) {
+    if ($y > 800) { $head(); }
+    $vals = [date('d/m/Y', strtotime($r['tx_date'])), $r['name'], $r['descr'], ($r['is_income'] ? '+' : '') . number_format((float)$r['amount'], 2), $r['category'], $r['unit']];
+    $x = $R; foreach ($cols as $i => $c) { $d->text($fit((string)$vals[$i], 8, (float)$c[1]), $x, $y, 8, 'r', 'r'); $x -= $c[2]; } $y += 13;
+  }
+  audit('budget_export', 'budget', '', 'PDF ' . count($all) . ' תנועות');
+  header('Content-Type: application/pdf'); header('Content-Disposition: attachment; filename="budget-' . date('Y-m-d') . '.pdf"'); header('X-Content-Type-Options: nosniff'); echo $d->output(); exit;
+}
+
 // ---- פעולות ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check(); $act = (string)($_POST['act'] ?? ''); $pdo = db();
@@ -189,14 +211,14 @@ page_head('תקציב – תנועות');
   <label>מסמכים<select name="doc"><?php foreach ([''=>'הכול','ni'=>'חסרה חשבונית','nr'=>'חסרה קבלה','nb'=>'חסרים שניהם','ok'=>'יש חשבונית וקבלה'] as $k => $l) echo '<option value="' . $k . '"' . ($f['doc'] === $k ? ' selected' : '') . '>' . e($l) . '</option>'; ?></select></label>
   <?php if ($f['month']) echo '<input type="hidden" name="month" value="' . e($f['month']) . '"><span class="pill">חודש ' . e(substr($f['month'], 5) . '/' . substr($f['month'], 0, 4)) . ' <a href="' . e('budget_tx.php?' . http_build_query(array_diff_key($keep, ['month' => 1, 'p' => 1]))) . '">הסרה</a></span>'; ?>
 </form>
-<p><b><?= (int)$tot['n'] ?></b> תנועות · הוצאות <b><?= e(budget_money0($tot['ex'])) ?></b> · הכנסות <b class="ok"><?= e(budget_money0($tot['inc'])) ?></b> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'csv=1') ?>">ייצוא CSV (לפי הסינון)</a></p>
+<p><b><?= (int)$tot['n'] ?></b> תנועות · הוצאות <b><?= e(budget_money0($tot['ex'])) ?></b> · הכנסות <b class="ok"><?= e(budget_money0($tot['inc'])) ?></b> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'csv=1') ?>">ייצוא CSV (לפי הסינון)</a> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'pdf=1') ?>">ייצוא PDF (לפי הסינון)</a></p>
 <?php if ($rows): ?>
 <form method="post" class="autosave" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="save">
 <div class="bar"><span class="asv mu" role="status" aria-live="polite">שינויים בקטגוריה, בחשבונית ובקבלה נשמרים אוטומטית.</span> <label class="inl"><input type="checkbox" name="learn" value="1" checked> זכרי שיוך של תנועה שלא שויכה (לפי שם הספק) גם לפעם הבאה</label></div>
 <div class="card sc"><table>
 <tr><th><?= $sortLink('d', 'תאריך') ?></th><th><?= $sortLink('n', 'שם') ?></th><th>תיאור</th><th>אסמכתה</th><th><?= $sortLink('a', 'סכום') ?></th><th><?= $sortLink('c', 'קטגוריה') ?></th><th><?= $sortLink('u', 'יחידה') ?></th><th>חשבונית</th><th>קבלה</th><?= $hasPay ? '<th>שולם</th>' : '' ?><th></th></tr>
 <?php foreach ($rows as $r): $id = (int)$r['id']; ?>
-<tr<?= $r['category'] === '' ? ' class="unm"' : '' ?>><td class="n"><?= e(date('d/m/Y', strtotime($r['tx_date']))) ?><input type="hidden" name="ids[]" value="<?= $id ?>"></td><td><?= e($r['name']) ?></td><td><?= e($r['descr']) ?></td><td><?= e($r['ref']) ?></td>
+<tr<?= $r['category'] === '' ? ' class="unm"' : '' ?>><td class="n"><?= e(date('d/m/Y', strtotime($r['tx_date']))) ?><input type="hidden" name="ids[]" value="<?= $id ?>"></td><td><?= $r['is_income'] ? e($r['name']) : '<a href="budget_suppliers.php?y=all&amp;s=' . rawurlencode(trim($r['name'])) . '">' . e($r['name']) . '</a>' ?></td><td><?= e($r['descr']) ?></td><td><?= e($r['ref']) ?></td>
 <td class="n<?= $r['is_income'] ? ' ok' : '' ?>"><bdi dir="ltr"><?= $r['is_income'] ? '+' : '' ?><?= e(budget_money($r['amount'])) ?></bdi></td>
 <td><select name="cat[<?= $id ?>]"><?= $opt($cats, $r['category'], '— לא משויך —') ?></select></td><td><?= e($r['unit']) ?></td>
 <?php foreach (['inv' => ['has_invoice', 'חשבונית'], 'rec' => ['has_receipt', 'קבלה']] as $k => [$col, $lb]): ?><td class="bdc"><input type="checkbox" name="<?= $k ?>[<?= $id ?>]" value="1"<?= $r[$col] ? ' checked' : '' ?> aria-label="<?= $lb ?>"><?php if ($hasPay): ?><span class="bdu<?= $r[$col] ? ' on' : '' ?>" data-tx="<?= $id ?>" data-k="<?= $k ?>"><?= bdoc_html($bdocs[$id][$k] ?? []) ?><label class="bdup">+ העלאה<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" hidden></label></span><?php endif; ?></td><?php endforeach; ?>

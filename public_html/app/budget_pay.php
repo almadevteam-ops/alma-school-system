@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
   if ($act === 'masav_apply') {
     $q = $pdo->prepare('SELECT * FROM budget_masav WHERE id = ? AND applied = 0'); $q->execute([(int)($_POST['id'] ?? 0)]); $m = $q->fetch(); if (!$m) $flash('הקובץ לא נמצא או שהתשלומים כבר נרשמו.', false, $self . '#masav');
-    $n = 0; $mv = 0; foreach (json_decode((string)$m['payload'], true)['rows'] ?? [] as $l) { [$t, $moved] = bpay_pay((int)$l['pid'], (float)$l['amount'], $by); if (!str_starts_with($t, 'החשבונית לא')) { $n++; if ($moved) $mv++; } }
+    $n = 0; $mv = 0; foreach (json_decode((string)$m['payload'], true)['rows'] ?? [] as $l) { [$t, $moved] = bpay_pay((int)$l['pid'], (float)$l['amount'], $by, (string)$m['credit_date'], 'מס"ב'); if (!str_starts_with($t, 'החשבונית לא')) { $n++; if ($moved) $mv++; } }
     $pdo->prepare('UPDATE budget_masav SET applied = 1 WHERE id = ?')->execute([$m['id']]); audit('masav_apply', 'budget', (string)$m['id'], "$n תשלומים"); $flash("נרשמו $n תשלומים כשולמו" . ($mv ? ", מהם $mv שולמו במלואם והועברו להוצאות" : '') . '.', true, $self . '#masav');
   }
   if ($act === 'masav_del') { $pdo->prepare('DELETE FROM budget_masav WHERE id = ?')->execute([(int)($_POST['id'] ?? 0)]); audit('masav_del', 'budget', (string)(int)($_POST['id'] ?? 0), ''); $flash('הקובץ נמחק מההיסטוריה.', true, $self . '#masav'); }
@@ -124,7 +124,7 @@ page_head('תקציב – לתשלום');
 <table><tr><th>ספק</th><th>חשבונית</th><th>לתשלום עד</th><th>קטגוריה</th><th>סה"כ</th><th>שולם</th><th>נותר</th><th>סכום לתשלום עכשיו</th><th>במס"ב</th><th>פרטי בנק</th><th></th></tr>
 <?php $today = date('Y-m-d'); foreach ($rows as $r): $id = (int)$r['id']; $rem = round((float)$r['total'] - (float)$r['paid_amount'], 2); $bk = $r['bank'] !== '' && $r['account'] !== ''; ?>
 <tr<?= $r['due_date'] && $r['due_date'] < $today ? ' class="unm"' : '' ?>>
-  <td><b><?= e($r['supplier']) ?></b><?= $r['biz_id'] !== '' ? '<br><span class="mu">עוסק ' . e($r['biz_id']) . '</span>' : '' ?><?php if ($r['descr'] !== ''): ?><br><span class="mu"><?= e($r['descr']) ?></span><?php endif; ?></td>
+  <td><b><a href="budget_suppliers.php?y=all&amp;s=<?= rawurlencode($r['supplier']) ?>"><?= e($r['supplier']) ?></a></b><?= $r['biz_id'] !== '' ? '<br><span class="mu">עוסק ' . e($r['biz_id']) . '</span>' : '' ?><?php if ($r['descr'] !== ''): ?><br><span class="mu"><?= e($r['descr']) ?></span><?php endif; ?></td>
   <td><?= e($r['ref']) ?><?= $r['inv_date'] ? '<br><span class="mu">' . e(date('d/m/Y', strtotime($r['inv_date']))) . '</span>' : '' ?><?php foreach ($pdocs[$id] ?? [] as $d): ?><br><a href="budget_file.php?id=<?= (int)$d['id'] ?>" target="_blank" rel="noopener">📎 קובץ</a><?php endforeach; ?></td>
   <td class="n"><?= $r['due_date'] ? e(date('d/m/Y', strtotime($r['due_date']))) : '—' ?></td><td><?= $r['category'] !== '' ? e($r['category']) : '<span class="mu">— לא משויך —</span>' ?></td>
   <td class="n"><?= e(budget_money($r['total'])) ?></td><td class="n"><?= (float)$r['paid_amount'] > 0 ? e(budget_money($r['paid_amount'])) . '<br><span class="mu">שולם חלקית</span>' : '—' ?></td><td class="n"><b><?= e(budget_money($rem)) ?></b></td>

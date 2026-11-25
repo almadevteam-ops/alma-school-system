@@ -45,13 +45,15 @@ function bpay_add(array $d, string $by): int {
   return (int)db()->lastInsertId();
 }
 /** רישום תשלום (מלא או חלקי). תשלום מלא מעביר את החשבונית להוצאות (כשולם). מחזירה [הודעה, הועבר להוצאות]. */
-function bpay_pay(int $pid, float $amount, string $by): array {
+function bpay_pay(int $pid, float $amount, string $by, ?string $on = null, string $note = ''): array {
   $pdo = db(); $pdo->beginTransaction();
   try {
     $st = $pdo->prepare("SELECT * FROM budget_payables WHERE id = ? AND status = 'open' FOR UPDATE"); $st->execute([$pid]); $r = $st->fetch();
     if (!$r) { $pdo->rollBack(); return ['החשבונית לא נמצאה או שכבר שולמה.', false]; }
     $rem = round((float)$r['total'] - (float)$r['paid_amount'], 2); $amount = round(min(max($amount, 0), $rem), 2);
     if ($amount <= 0) { $pdo->rollBack(); return ['יש להזין סכום לתשלום.', false]; }
+    $on = ($on && preg_match('/^\d{4}-\d{2}-\d{2}$/', $on)) ? $on : date('Y-m-d');
+    $pdo->prepare('INSERT INTO budget_pay_log (payable_id, amount, paid_on, note, created_by, created_at) VALUES (?,?,?,?,?,?)')->execute([$pid, $amount, $on, mb_substr($note, 0, 120), mb_substr($by, 0, 100), now()]);
     $paid = round((float)$r['paid_amount'] + $amount, 2); $left = round((float)$r['total'] - $paid, 2);
     if ($left > 0.004) {
       $pdo->prepare('UPDATE budget_payables SET paid_amount = ?, pay_now = ?, masav = 0 WHERE id = ?')->execute([$paid, $left, $pid]); $pdo->commit();
