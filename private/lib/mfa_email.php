@@ -12,8 +12,17 @@ function mfa_mask(string $email): string {
 function mfa_code_hash(string $code): string { return hash_hmac('sha256', $code, master_key()); }
 $GLOBALS['MAIL_ERR'] = '';
 function mail_last_error(): string { return (string)$GLOBALS['MAIL_ERR']; }
+/** בניית הודעת MIME מלאה (כולל קבצים מצורפים: [['name'=>, 'type'=>, 'data'=>]]). */
+function mail_build(string $from, string $to, string $subject, string $body, array $attach = []): string {
+  $h = "From: =?UTF-8?B?" . base64_encode('עלמא') . "?= <$from>\r\nTo: <$to>\r\nSubject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\nDate: " . date('r') . "\r\nMessage-ID: <" . bin2hex(random_bytes(10)) . '@' . (string)cfg('host', 'localhost') . ">\r\nMIME-Version: 1.0\r\n";
+  if (!$attach) return $h . "Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . chunk_split(base64_encode($body));
+  $b = 'alma_' . bin2hex(random_bytes(8));
+  $m = $h . "Content-Type: multipart/mixed; boundary=\"$b\"\r\n\r\n--$b\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . chunk_split(base64_encode($body));
+  foreach ($attach as $a) { $n = '=?UTF-8?B?' . base64_encode((string)$a['name']) . '?='; $m .= "--$b\r\nContent-Type: " . ($a['type'] ?? 'application/octet-stream') . "; name=\"$n\"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"$n\"\r\n\r\n" . chunk_split(base64_encode((string)$a['data'])); }
+  return $m . "--$b--\r\n";
+}
 /** שליחת SMTP פשוטה (Gmail: smtp.gmail.com, סיסמת אפליקציה). smtp_secure: ssl (465) | tls (587) | none. */
-function smtp_send(string $to, string $subject, string $body): bool {
+function smtp_send(string $to, string $subject, string $body, array $attach = []): bool {
   $host = (string)cfg('smtp_host'); $secure = (string)cfg('smtp_secure', 'ssl'); $port = (int)cfg('smtp_port', $secure === 'tls' ? 587 : 465);
   $user = (string)cfg('smtp_user', ''); $pass = (string)cfg('smtp_pass', ''); $from = (string)cfg('mail_from', $user);
   $fail = function (string $m) use (&$fp): bool { $GLOBALS['MAIL_ERR'] = $m; if (is_resource($fp)) @fclose($fp); return false; };
@@ -38,17 +47,18 @@ function smtp_send(string $to, string $subject, string $body): bool {
   $r = $cmd('MAIL FROM:<' . $from . '>', [250]); if (!$r[0]) return $fail('MAIL FROM: ' . $r[1]);
   $r = $cmd('RCPT TO:<' . $to . '>', [250, 251]); if (!$r[0]) return $fail('RCPT: ' . $r[1]);
   $r = $cmd('DATA', [354]); if (!$r[0]) return $fail('DATA: ' . $r[1]);
-  $msg = "From: =?UTF-8?B?" . base64_encode('עלמא') . "?= <$from>\r\nTo: <$to>\r\nSubject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\nDate: " . date('r') . "\r\nMessage-ID: <" . bin2hex(random_bytes(10)) . '@' . (string)cfg('host', 'localhost') . ">\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . chunk_split(base64_encode($body));
+  $msg = mail_build($from, $to, $subject, $body, $attach);
   fwrite($fp, $msg . "\r\n.\r\n"); [$code, $txt] = $rd();
   if ($code !== 250) return $fail('השליחה נדחתה: ' . $code . ' ' . mb_substr($txt, 0, 120));
   $cmd('QUIT', [221]); @fclose($fp); return true;
 }
-function send_mail(string $to, string $subject, string $body): bool {
+function send_mail(string $to, string $subject, string $body, array $attach = []): bool {
   $GLOBALS['MAIL_ERR'] = '';
   if (!filter_var($to, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $to)) { $GLOBALS['MAIL_ERR'] = 'כתובת לא תקינה'; return false; }
-  if (cfg('mail_transport', 'mail') === 'file') { return file_put_contents(PRIV . '/storage/mail.log', json_encode(['to' => $to, 'subject' => $subject, 'body' => $body], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX) !== false; }
-  if (cfg('smtp_host')) return smtp_send($to, $subject, $body);
+  if (cfg('mail_transport', 'mail') === 'file') { foreach ($attach as $a) { @mkdir(PRIV . '/storage/mail_att', 0700, true); @file_put_contents(PRIV . '/storage/mail_att/' . preg_replace('/[^\w.\-]/u', '_', $to) . '_' . preg_replace('/[^\w.\-]/', '_', (string)$a['name']), (string)$a['data']); } return file_put_contents(PRIV . '/storage/mail.log', json_encode(['to' => $to, 'subject' => $subject, 'body' => $body, 'attach' => array_map(fn($a) => $a['name'] . ' (' . strlen((string)$a['data']) . ')', $attach)], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX) !== false; }
+  if (cfg('smtp_host')) return smtp_send($to, $subject, $body, $attach);
   $from = (string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'));
+  if ($attach) { $full = mail_build($from, $to, $subject, $body, $attach); [$hd, $bd] = explode("\r\n\r\n", $full, 2); $hd = preg_replace('/^(To|Subject): .*\r\n/m', '', $hd . "\r\n"); $ok = @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $bd, rtrim($hd), '-f' . $from); if (!$ok) $GLOBALS['MAIL_ERR'] = 'שרת הדואר של האחסון סירב.'; return $ok; }
   $h = "From: עלמא <$from>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\nX-Auto-Response-Suppress: All";
   $ok = @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $body, $h, '-f' . $from);
   if (!$ok) $GLOBALS['MAIL_ERR'] = 'שרת הדואר של האחסון סירב.';
