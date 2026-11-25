@@ -18,7 +18,7 @@ if (($_GET['csv'] ?? '') === '1') {
   audit('budget_export', 'budget', '', "ייצוא $n תנועות"); exit;
 }
 
-if (($_GET['pdf'] ?? '') === '1') {   // ייצוא PDF של התנועות לפי הסינון
+if (($_GET['xpdf'] ?? '') === '1') {   // ייצוא PDF של התנועות לפי הסינון
   $q = db()->prepare("SELECT * FROM budget_tx $wh ORDER BY tx_date, id LIMIT 3000"); $q->execute($wa); $all = $q->fetchAll();
   $d = new PdfDoc(dirname(__DIR__, 2) . '/private/fonts');
   $fit = function (string $t, float $sz, float $mw) use ($d): string { $t = trim(preg_replace('/\s+/u', ' ', $t)); if ($d->width($t, $sz) <= $mw) return $t; while ($t !== '' && $d->width($t . '…', $sz) > $mw) $t = mb_substr($t, 0, -1); return $t . '…'; };
@@ -63,6 +63,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   } elseif ($act === 'topay') {   // העברת הוצאה (שטרם שולמה) לחלונית "לתשלום"
     $id = (int)($_POST['id'] ?? 0); $q = $pdo->prepare('SELECT * FROM budget_tx WHERE id=? AND is_income=0'); $q->execute([$id]); $x = $q->fetch();
     if (!$x || !bpay_ready()) $flash('התנועה לא נמצאה (אפשר להעביר לתשלום רק הוצאה).', false);
+    $old = null; if (!empty($x['payable_id'])) { $oq = $pdo->prepare("SELECT id FROM budget_payables WHERE id = ? AND status = 'paid'"); $oq->execute([(int)$x['payable_id']]); $old = $oq->fetchColumn() ?: null; }
+    if ($old) {   // ההוצאה נוצרה מחשבונית שכבר שולמה: פותחים אותה מחדש במקום ליצור חשבונית כפולה בכרטסת
+      $pid = (int)$old; $pdo->prepare('DELETE FROM budget_pay_log WHERE payable_id = ?')->execute([$pid]);
+      $pdo->prepare("UPDATE budget_payables SET supplier=?, ref=?, descr=?, category=?, total=?, paid_amount=0, pay_now=?, masav=0, status='open', moved_tx_id=NULL, paid_at=NULL WHERE id=?")->execute([(string)$x['name'], (string)$x['ref'], (string)$x['descr'], (string)$x['category'], (float)$x['amount'], (float)$x['amount'], $pid]);
+    } else
     $pid = bpay_add(['supplier' => (string)$x['name'], 'biz_id' => '', 'bank' => '', 'branch' => '', 'account' => '', 'ref' => (string)$x['ref'], 'inv_date' => (string)$x['tx_date'], 'due_date' => '', 'descr' => (string)$x['descr'], 'category' => (string)$x['category'], 'total' => (float)$x['amount']], $by);
     $pdo->prepare('UPDATE budget_docs SET payable_id = ?, tx_id = NULL WHERE tx_id = ?')->execute([$pid, $id]);
     $pdo->prepare('DELETE FROM budget_tx WHERE id = ?')->execute([$id]); audit('budget_topay', 'budget', (string)$id, $x['name'] . ' ' . $x['amount']);
@@ -133,10 +138,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$fls && !$rowsJ) $flash('בחרי קובץ לייבוא.', false);
     if (count($fls) > 20) $flash('אפשר לייבא עד 20 קבצים בכל פעם.', false);
     if (count($rowsJ) > BUDGET_MAX_IMPORT) $flash('יותר מדי שורות ב-PDF (מקסימום ' . BUDGET_MAX_IMPORT . ').', false);
-    $ad = $du = $bd = 0; $nf = 0; $errs = []; $cards = [];
+    $ad = $du = $bd = 0; $nf = 0; $errs = []; $cards = []; $cardOnly = !empty($_POST['card_only']);
     foreach ($fls as $fl) {
       $nm = (string)$fl['name'];
       if ((int)$fl['error'] !== UPLOAD_ERR_OK) { $errs[] = $nm . ': ' . upload_error_text((int)$fl['error']); continue; }
+      if ($cardOnly && !preg_match('/\.xlsx$/i', $nm)) { $errs[] = $nm . ': לדוח פירוט אשראי יש להעלות קובץ Excel (xlsx) מאתר חברת האשראי'; continue; }
       if (!preg_match('/\.(xlsx|csv|xls|htm|html)$/i', $nm)) { $errs[] = $nm . ': סוג קובץ לא נתמך'; continue; }
       if ((int)$fl['size'] > 10 * 1024 * 1024) { $errs[] = $nm . ': הקובץ גדול מדי (מעל 10MB)'; continue; }
       if (!is_uploaded_file($fl['tmp_name']) && !(defined('TESTING_UPLOADS') && TESTING_UPLOADS)) { $errs[] = $nm . ': קובץ לא תקין'; continue; }
@@ -147,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           if (isset($cards[$card['last4']])) $cards[$card['last4']]['tx'] = array_merge($cards[$card['last4']]['tx'], $card['tx']); else $cards[$card['last4']] = $card;
           $nf++; continue;
         }
+        if ($cardOnly) { $errs[] = $nm . ': הקובץ לא זוהה כדוח פירוט עסקאות של חברת האשראי'; continue; }
       }
       try { [$a1, $d1, $b1] = budget_import((string)$fl['tmp_name'], $nm, $by); $ad += $a1; $du += $d1; $bd += $b1; $nf++; }
       catch (Throwable $t) { $errs[] = $nm . ': ' . $t->getMessage(); }
@@ -211,7 +218,7 @@ page_head('תקציב – תנועות');
   <label>מסמכים<select name="doc"><?php foreach ([''=>'הכול','ni'=>'חסרה חשבונית','nr'=>'חסרה קבלה','nb'=>'חסרים שניהם','ok'=>'יש חשבונית וקבלה'] as $k => $l) echo '<option value="' . $k . '"' . ($f['doc'] === $k ? ' selected' : '') . '>' . e($l) . '</option>'; ?></select></label>
   <?php if ($f['month']) echo '<input type="hidden" name="month" value="' . e($f['month']) . '"><span class="pill">חודש ' . e(substr($f['month'], 5) . '/' . substr($f['month'], 0, 4)) . ' <a href="' . e('budget_tx.php?' . http_build_query(array_diff_key($keep, ['month' => 1, 'p' => 1]))) . '">הסרה</a></span>'; ?>
 </form>
-<p><b><?= (int)$tot['n'] ?></b> תנועות · הוצאות <b><?= e(budget_money0($tot['ex'])) ?></b> · הכנסות <b class="ok"><?= e(budget_money0($tot['inc'])) ?></b> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'csv=1') ?>">ייצוא CSV (לפי הסינון)</a> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'pdf=1') ?>">ייצוא PDF (לפי הסינון)</a></p>
+<p><b><?= (int)$tot['n'] ?></b> תנועות · הוצאות <b><?= e(budget_money0($tot['ex'])) ?></b> · הכנסות <b class="ok"><?= e(budget_money0($tot['inc'])) ?></b> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'csv=1') ?>">ייצוא CSV (לפי הסינון)</a> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'xpdf=1') ?>">ייצוא PDF (לפי הסינון)</a></p>
 <?php if ($rows): ?>
 <form method="post" class="autosave" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="save">
 <div class="bar"><span class="asv mu" role="status" aria-live="polite">שינויים בקטגוריה, בחשבונית ובקבלה נשמרים אוטומטית.</span> <label class="inl"><input type="checkbox" name="learn" value="1" checked> זכרי שיוך של תנועה שלא שויכה (לפי שם הספק) גם לפעם הבאה</label></div>
@@ -251,6 +258,11 @@ page_head('תקציב – תנועות');
   <p class="bar"><button name="act" value="pdf_apply" data-confirm="לייבא את <?= $nNew ?> התנועות שסומנו?">ייבוא התנועות שסומנו</button><button name="act" value="pdf_cancel" class="sec" formnovalidate>ביטול</button></p>
 </form>
 <?php endif; ?>
+<details class="card" id="impcard"><summary><b>ייבוא פירוט חברת האשראי (דביט כא"ל)</b></summary>
+  <form method="post" enctype="multipart/form-data" class="bar" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="import"><input type="hidden" name="card_only" value="1"><label>דוח פירוט עסקאות של כרטיס האשראי (Excel, אפשר כמה כרטיסים או חודשים יחד)<input type="file" name="file[]" accept=".xlsx" multiple required></label><button>ייבוא פירוט אשראי</button></form>
+  <p class="mu">בדוח הבנק כל חיוב אשראי מופיע כשורה אחת בשם "דביט כא"ל". כשמעלים כאן את פירוט הרכישות של חברת האשראי, המערכת מתאימה את הרכישות לשורת החיוב לפי הסכום, מחליפה את שורת החיוב ברכישות עצמן (עם שם בית העסק והתאריך), ומשייכת כל רכישה לקטגוריה לפי הכללים. מה שלא זוהה נשאר "לא משויך" לשיוך ידני. מוצגת תצוגה מקדימה לאישור לפני השמירה, ואין ספירה כפולה: אפשר להעלות את הפירוט לפני דוח הבנק או אחריו.</p>
+  <p class="mu">הדוח מורד מאתר חברת האשראי (פירוט עסקאות לחיוב), ואם הקובץ לא נקלט, יש להעלות אותו כפי שהורד, בלי לערוך.</p>
+</details>
 <details class="card" id="imp"><summary><b>ייבוא מ-Excel או CSV</b></summary>
   <form method="post" enctype="multipart/form-data" class="bar" action="<?= e($self) ?>" data-bpdf><?= csrf_field() ?><input type="hidden" name="act" value="import"><input type="hidden" name="rows" value=""><label>קבצים (אפשר לבחור עד 20 יחד: PDF / xlsx / xls / csv)<input type="file" name="file[]" accept=".pdf,.xlsx,.csv,.xls,.htm,.html" multiple required></label><button>ייבוא</button> <span id="bpdf-msg" class="mu" role="status"></span></form>
   <?php $nIb = (int)db()->query("SELECT COUNT(*) FROM budget_tx WHERE name = '" . BUDGET_IB . "' AND category = ''")->fetchColumn(); if ($nIb > 0): ?><p class="aptn"><b><?= $nIb ?></b> שורות "העברה באינטרנט" מדוח הבנק ממתינות לפירוט. יש להעלות כאן את <b>רשימת ההעברות</b> (PDF) מהבנק, והן יתמלאו בשם הספק, בתיאור ובקטגוריה בלי להוסיף תנועות כפולות.</p><?php endif; ?>

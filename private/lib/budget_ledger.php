@@ -41,7 +41,7 @@ function bl_ledger(string $name, ?array $range): array {
   $info = ['biz' => '', 'bank' => '', 'branch' => '', 'account' => '']; foreach (array_reverse($pays) as $p) { foreach ($info as $k => $_) if ($info[$k] === '' && ($k === 'biz' ? $p['biz_id'] : $p[$k]) !== '') $info[$k] = $k === 'biz' ? $p['biz_id'] : $p[$k]; }
   foreach ($pays as $p) {
     $d = $p['inv_date'] ?: substr((string)$p['created_at'], 0, 10); $st = $p['status'] === 'paid' ? 'שולמה' : ((float)$p['paid_amount'] > 0 ? 'שולמה חלקית' : 'ממתינה לתשלום');
-    $E[] = ['d' => $d, 'o' => 0, 'doc' => 'חשבונית' . ($p['ref'] !== '' ? ' ' . $p['ref'] : ''), 'txt' => trim($p['descr'] . ' · ' . $st . ($p['due_date'] ? ' · לתשלום עד ' . date('d/m/Y', strtotime($p['due_date'])) : ''), ' ·'), 'c' => (float)$p['total'], 'p' => 0.0, 'kind' => 'inv', 'open' => $p['status'] === 'open'];
+    $E[] = ['d' => $d, 'o' => 0, 'doc' => 'חשבונית' . ($p['ref'] !== '' ? ' ' . $p['ref'] : ''), 'txt' => trim($p['descr'] . ' · ' . $st . ($p['due_date'] ? ' · לתשלום עד ' . date('d/m/Y', strtotime($p['due_date'])) : ''), ' ·'), 'c' => (float)$p['total'], 'p' => 0.0, 'kind' => 'inv', 'open' => $p['status'] === 'open', 'pid' => (int)$p['id']];
   }
   if ($ids) { $in = implode(',', $ids); foreach ($pdo->query("SELECT * FROM budget_pay_log WHERE payable_id IN ($in)") as $l) $E[] = ['d' => (string)$l['paid_on'], 'o' => 1, 'doc' => 'תשלום', 'txt' => $l['note'], 'c' => 0.0, 'p' => (float)$l['amount'], 'kind' => 'pay', 'open' => false]; }
   $q = $pdo->prepare("SELECT * FROM budget_tx WHERE TRIM(name) IN ($ph) AND is_income = 0 AND payable_id IS NULL"); $q->execute($nm);

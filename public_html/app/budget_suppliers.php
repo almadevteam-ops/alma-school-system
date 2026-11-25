@@ -13,6 +13,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $n = bl_merge($sel, $tg, $by); audit('supplier_merge', 'budget', '', implode(' + ', $sel) . ' => ' . $tg);
       $_SESSION['smsg'] = [true, "אוחדו $n שמות תחת \"$tg\"."]; $back = 'budget_suppliers.php?' . http_build_query(['y' => $f['yr'], 's' => $tg]);
     }
+  } elseif ($act === 'del_inv') {   // מחיקת חשבונית (עם התשלומים שנרשמו לה) מהכרטסת, למשל חשבונית כפולה
+    $pid = (int)($_POST['pid'] ?? 0); $pdo = db(); $q = $pdo->prepare('SELECT supplier, total FROM budget_payables WHERE id = ?'); $q->execute([$pid]); $x = $q->fetch();
+    if ($x) {
+      foreach ($pdo->query('SELECT id FROM budget_docs WHERE tx_id IS NULL AND payable_id = ' . $pid)->fetchAll(PDO::FETCH_COLUMN) as $did) bdoc_delete((int)$did);
+      $pdo->prepare('UPDATE budget_tx SET payable_id = NULL WHERE payable_id = ?')->execute([$pid]);
+      $pdo->prepare('DELETE FROM budget_pay_log WHERE payable_id = ?')->execute([$pid]); $pdo->prepare('DELETE FROM budget_payables WHERE id = ?')->execute([$pid]);
+      audit('budget_inv_del', 'budget', (string)$pid, $x['supplier'] . ' ' . $x['total']); $_SESSION['smsg'] = [true, 'החשבונית נמחקה מהכרטסת.'];
+    }
+    $back = 'budget_suppliers.php?' . http_build_query(['y' => $f['yr'], 's' => bl_canon((string)($_POST['s'] ?? ''))]);
   } elseif ($act === 'unmerge') {
     $al = bl_norm((string)($_POST['alias'] ?? '')); $main = bl_canon($al); db()->prepare('DELETE FROM budget_supplier_alias WHERE alias = ?')->execute([$al]); audit('supplier_unmerge', 'budget', '', $al);
     $_SESSION['smsg'] = [true, 'האיחוד בוטל.']; $back = 'budget_suppliers.php?' . http_build_query(['y' => $f['yr'], 's' => $main]);
@@ -45,10 +54,10 @@ if ($name !== ''):
 <div class="tiles"><div class="tile"><span class="mu">סה"כ חיובים</span><b><?= e(budget_money($L['totals']['c'])) ?></b></div><div class="tile g"><span class="mu">סה"כ שולם</span><b class="ok"><?= e(budget_money($L['totals']['p'])) ?></b></div><div class="tile p"><span class="mu">יתרה לתשלום</span><b class="<?= $L['totals']['bal'] > 0.004 ? 'er' : '' ?>"><?= e(budget_money($L['totals']['bal'])) ?></b></div></div>
 <?php $al = array_values(array_filter(bl_names($name), fn($x) => $x !== $name)); if ($al): ?><div class="card"><b>שמות שאוחדו לספק הזה:</b>
   <?php foreach ($al as $a): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="unmerge"><input type="hidden" name="alias" value="<?= e($a) ?>"><input type="hidden" name="y" value="<?= e($f['yr']) ?>"> <span class="pill"><?= e($a) ?></span> <button class="sec" data-confirm="לבטל את האיחוד של &quot;<?= e($a) ?>&quot;?">ביטול איחוד</button></form> <?php endforeach; ?></div><?php endif; ?>
-<?php if ($L['rows']): ?><div class="card sc"><table><tr><th>תאריך</th><th>מסמך</th><th>פרטים</th><th>חיוב</th><th>תשלום</th><th>יתרה לתשלום</th></tr>
+<?php if ($L['rows']): ?><div class="card sc"><table><tr><th>תאריך</th><th>מסמך</th><th>פרטים</th><th>חיוב</th><th>תשלום</th><th>יתרה לתשלום</th><th></th></tr>
 <?php if (abs($L['opening']) > 0.004): ?><tr><td></td><td><b>יתרת פתיחה</b></td><td></td><td></td><td></td><td class="n"><?= e(budget_money($L['opening'])) ?></td></tr><?php endif; ?>
-<?php foreach ($L['rows'] as $r): ?><tr<?= $r['open'] ? ' class="unm"' : '' ?>><td class="n"><?= e(date('d/m/Y', strtotime($r['d']))) ?></td><td><?= e($r['doc']) ?></td><td><?= e($r['txt']) ?></td><td class="n"><?= $r['c'] > 0 ? e(budget_money($r['c'])) : '' ?></td><td class="n ok"><?= $r['p'] > 0 ? e(budget_money($r['p'])) : '' ?></td><td class="n"><b><?= e(budget_money($r['bal'])) ?></b></td></tr><?php endforeach; ?>
-<tr><td></td><td><b>סה"כ</b></td><td></td><td class="n"><b><?= e(budget_money($L['totals']['c'])) ?></b></td><td class="n"><b><?= e(budget_money($L['totals']['p'])) ?></b></td><td class="n"><b><?= e(budget_money($L['totals']['bal'])) ?></b></td></tr></table></div>
+<?php foreach ($L['rows'] as $r): ?><tr<?= $r['open'] ? ' class="unm"' : '' ?>><td class="n"><?= e(date('d/m/Y', strtotime($r['d']))) ?></td><td><?= e($r['doc']) ?></td><td><?= e($r['txt']) ?></td><td class="n"><?= $r['c'] > 0 ? e(budget_money($r['c'])) : '' ?></td><td class="n ok"><?= $r['p'] > 0 ? e(budget_money($r['p'])) : '' ?></td><td class="n"><b><?= e(budget_money($r['bal'])) ?></b></td><td><?php if (($r['kind'] ?? '') === 'inv'): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="del_inv"><input type="hidden" name="pid" value="<?= (int)$r['pid'] ?>"><input type="hidden" name="s" value="<?= e($name) ?>"><input type="hidden" name="y" value="<?= e($f['yr']) ?>"><button class="dg" data-confirm="למחוק את החשבונית מהכרטסת, כולל התשלומים שנרשמו לה? (אם היא כפולה או הוזנה בטעות)">מחיקה</button></form><?php endif; ?></td></tr><?php endforeach; ?>
+<tr><td></td><td><b>סה"כ</b></td><td></td><td class="n"><b><?= e(budget_money($L['totals']['c'])) ?></b></td><td class="n"><b><?= e(budget_money($L['totals']['p'])) ?></b></td><td class="n"><b><?= e(budget_money($L['totals']['bal'])) ?></b></td><td></td></tr></table></div>
 <p class="mu">חיוב = חשבונית או הוצאה; תשלום = כל תשלום (מלא או חלקי) שנרשם; היתרה היא מה שנשאר לשלם לספק. שורות מסומנות באדום הן חשבוניות או הוצאות שעדיין לא שולמו.</p>
 <?php else: ?><div class="card"><p class="emp">אין תנועות לספק זה בתקופה שנבחרה.</p></div><?php endif; ?>
 <?php else:
