@@ -24,6 +24,7 @@ function gd_ready(): bool {
 }
 /** קריאה ל-Web App של Apps Script. הוא עונה ב-302 לכתובת התוצאה, ולכן עוקבים (ה-POST הופך ל-GET, וזה מה שנדרש). */
 function gd_script(array $payload): array {
+  if (is_test_env()) throw new RuntimeException('חסום בסביבת בדיקות');
   $url = gd_get('url'); if (!preg_match('~^https://script\.google\.com/~', $url) && !cfg('gd_script_any', false)) throw new RuntimeException('כתובת ה-Web App חייבת להתחיל ב-https://script.google.com/');
   $c = curl_init($url); curl_setopt_array($c, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload + ['secret' => gd_get('sskey')]), CURLOPT_HTTPHEADER => ['Content-Type: text/plain;charset=utf-8'], CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 5, CURLOPT_TIMEOUT => 120, CURLOPT_CONNECTTIMEOUT => 20]);
   $out = curl_exec($c); $code = (int)curl_getinfo($c, CURLINFO_RESPONSE_CODE); $er = curl_error($c); curl_close($c);
@@ -35,6 +36,7 @@ function gd_script(array $payload): array {
 }
 /** בקשת HTTP. מחזיר [קוד, כותרות, גוף]. $file – קובץ להעלאה בזרימה. */
 function gd_http(string $method, string $url, array $hdr = [], $body = null, ?string $file = null): array {
+  if (is_test_env()) throw new RuntimeException('חסום בסביבת בדיקות');
   $c = curl_init($url); $heads = [];
   curl_setopt_array($c, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 600, CURLOPT_CONNECTTIMEOUT => 20, CURLOPT_HTTPHEADER => $hdr, CURLOPT_FOLLOWLOCATION => false,
     CURLOPT_HEADERFUNCTION => function ($ch, $h) use (&$heads) { $p = explode(':', $h, 2); if (count($p) === 2) $heads[strtolower(trim($p[0]))] = trim($p[1]); return strlen($h); }]);

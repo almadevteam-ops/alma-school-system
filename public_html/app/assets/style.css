@@ -331,3 +331,9 @@ tr.edr>td{background:#f6f1fa;padding:10px 12px;white-space:normal}tr.edr .edf{ma
 .bgb.pl2{grid-template-columns:minmax(110px,190px) 1fr 52px}
 @media(max-width:700px){.top{height:auto;min-height:var(--hh);padding:6px 10px;gap:6px}.top nav{flex-wrap:wrap;gap:2px}.top .brand b{display:none}.sub{position:static}}
 @media(max-width:700px){.top nav .menu{position:static}.top nav .dd{position:absolute;top:100%;left:8px;right:8px;inset-inline-start:8px;inset-inline-end:8px;min-width:0;max-height:70vh;overflow-y:auto;margin-top:2px}.top nav .dd a{padding:12px 14px}}
+/* סביבת בדיקות: צבעים שונים לגמרי + פס קבוע */
+body.envtest{--ac:#1e3a8a;--ac2:#2563eb;--gr:#f59e0b;--gd:#92400e;--tint:#fef3c7}
+.envbar{position:sticky;top:0;z-index:70;background:#f59e0b;color:#1c1917;text-align:center;font-weight:700;font-size:13px;padding:5px 10px}.envbar a{color:#1c1917}
+body.envtest .top{top:28px}body.envtest .sub{top:calc(var(--hh) + 28px)}
+@media(max-width:700px){body.envtest .sub{top:auto}}
+.pre{white-space:pre-wrap;word-break:break-word;font:inherit;margin:0}

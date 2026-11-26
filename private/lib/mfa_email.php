@@ -23,6 +23,7 @@ function mail_build(string $from, string $to, string $subject, string $body, arr
 }
 /** שליחת SMTP פשוטה (Gmail: smtp.gmail.com, סיסמת אפליקציה). smtp_secure: ssl (465) | tls (587) | none. */
 function smtp_send(string $to, string $subject, string $body, array $attach = []): bool {
+  if (is_test_env()) { $GLOBALS['MAIL_ERR'] = 'חסום בסביבת בדיקות'; return false; }
   $host = (string)cfg('smtp_host'); $secure = (string)cfg('smtp_secure', 'ssl'); $port = (int)cfg('smtp_port', $secure === 'tls' ? 587 : 465);
   $user = (string)cfg('smtp_user', ''); $pass = (string)cfg('smtp_pass', ''); $from = (string)cfg('mail_from', $user);
   $fail = function (string $m) use (&$fp): bool { $GLOBALS['MAIL_ERR'] = $m; if (is_resource($fp)) @fclose($fp); return false; };
@@ -55,6 +56,10 @@ function smtp_send(string $to, string $subject, string $body, array $attach = []
 function send_mail(string $to, string $subject, string $body, array $attach = []): bool {
   $GLOBALS['MAIL_ERR'] = '';
   if (!filter_var($to, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $to)) { $GLOBALS['MAIL_ERR'] = 'כתובת לא תקינה'; return false; }
+  if (is_test_env()) {   // סביבת בדיקות: שום מייל לא יוצא. ההודעה נשמרת ונראית ב"תיבת דואר בדיקות"
+    @mkdir(PRIV . '/storage', 0700, true);
+    return file_put_contents(PRIV . '/storage/test_mail.log', json_encode(['at' => date('Y-m-d H:i:s'), 'to' => $to, 'subject' => $subject, 'body' => $body, 'att' => array_map(fn($a) => (string)($a['name'] ?? ''), $attach)], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX) !== false;
+  }
   if (cfg('mail_transport', 'mail') === 'file') { foreach ($attach as $a) { @mkdir(PRIV . '/storage/mail_att', 0700, true); @file_put_contents(PRIV . '/storage/mail_att/' . preg_replace('/[^\w.\-]/u', '_', $to) . '_' . preg_replace('/[^\w.\-]/', '_', (string)$a['name']), (string)$a['data']); } return file_put_contents(PRIV . '/storage/mail.log', json_encode(['to' => $to, 'subject' => $subject, 'body' => $body, 'attach' => array_map(fn($a) => $a['name'] . ' (' . strlen((string)$a['data']) . ')', $attach)], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX) !== false; }
   if (cfg('smtp_host')) return smtp_send($to, $subject, $body, $attach);
   $from = (string)cfg('mail_from', 'noreply@' . (string)cfg('host', 'localhost'));

@@ -10,6 +10,11 @@ return [
   'force_https' => true,
   'idle'        => 1800,   // ניתוק אחרי 30 דקות חוסר פעילות
   'maxage'      => 28800,  // ניתוק מוחלט אחרי 8 שעות
+  // סביבת בדיקות בלבד (בקובץ ההגדרות של test_env): חוסם שליחת מיילים וגיבוי לגוגל, צובע את האתר ומוסיף סיסמת גישה
+  // 'env'       => 'test',
+  // 'test_gate' => 'סיסמת גישה לסביבת הבדיקות',
+  // 'prod_url'  => 'https://alma-school.co.il/app/',   // לכפתור "חזרה לאתר האמיתי" (ברירת מחדל: לפי host)
+  // באתר האמיתי אפשר להגדיר 'test_url' => 'https://test.alma-school.co.il/app/' (ברירת מחדל: test. + host)
   // 'new_student_notify' => 'secretariat@example.com, other@example.com', // נמענים למייל "תלמידה חדשה נוספה" (מופרדים בפסיק)
   // 'mail_from' => 'noreply@alma-school.co.il', // כתובת השולח של קודי הכניסה במייל (ברירת מחדל: noreply@ + host)
   // שליחת מייל דרך Gmail (סיסמת אפליקציה): להסיר את // בשורות הבאות ולמלא

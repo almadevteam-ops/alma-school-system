@@ -10,6 +10,12 @@ ini_set('log_errors', '1');
 
 function cfg(string $k, $d = null) { global $CFG; return $CFG[$k] ?? $d; }
 function is_https(): bool { return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? '') === '443'); }
+/** סביבת בדיקות: מוגדרת ב-config.php ('env' => 'test'), או אוטומטית כשהמערכת יושבת בתיקייה test_env. בסביבה כזו שום חיבור החוצה לא פועל. */
+function is_test_env(): bool { return cfg('env', 'prod') === 'test' || str_contains(str_replace('\\', '/', PRIV), '/test_env/') || str_ends_with(str_replace('\\', '/', PRIV), '/test_env/private'); }
+function env_other_url(): string {
+  if (is_test_env()) return (string)cfg('prod_url', 'https://' . preg_replace('~^test\.~', '', (string)cfg('host', 'alma-school.co.il')) . '/app/');
+  return (string)cfg('test_url', 'https://test.' . (string)cfg('host', 'alma-school.co.il') . '/app/');
+}
 /** נתונים מבחוץ (משרד החינוך, אקסל) מגיעים לעיתים בסדר חזותי הפוך: ")אסייה(" במקום "(אסייה)". מחליף רק תבנית הפוכה בבירור. */
 function bidi_fix($v): string {
   $v = (string)$v;
@@ -17,6 +23,25 @@ function bidi_fix($v): string {
 }
 function e($v): string { return htmlspecialchars(bidi_fix($v), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function client_ip(): string { return substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45); }
+// ---- סביבת בדיקות: סיסמת גישה נוספת (נכשל סגור: בלי סיסמה מוגדרת, הגישה חסומה) ----
+if (is_test_env() && PHP_SAPI !== 'cli') {
+  header('X-Robots-Tag: noindex, nofollow');
+  $gp = (string)cfg('test_gate', ''); $gc = $gp === '' ? '' : hash_hmac('sha256', 'alma-test-gate', 'gate|' . $gp);
+  $okc = $gc !== '' && isset($_COOKIE['almagate']) && hash_equals($gc, (string)$_COOKIE['almagate']);
+  $gerr = '';
+  if (!$okc && $gp !== '' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['_gate'])) {
+    if (hash_equals($gp, (string)$_POST['_gate'])) { setcookie('almagate', $gc, ['expires' => time() + 43200, 'path' => '/', 'secure' => is_https(), 'httponly' => true, 'samesite' => 'Lax']); header('Location: ' . strtok((string)($_SERVER['REQUEST_URI'] ?? '/'), '?')); exit; }
+    sleep(1); $gerr = 'הסיסמה שגויה.';
+  }
+  if (!$okc) {
+    http_response_code($gp === '' ? 503 : 401);
+    echo '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>סביבת בדיקות</title><link rel="stylesheet" href="/app/assets/style.css"></head><body class="envtest"><main><div class="card login"><h1>סביבת בדיקות</h1>'
+       . ($gp === '' ? '<p class="er">הסביבה לא הוגדרה: חסר <code>test_gate</code> בקובץ ההגדרות.</p>' : '<p class="mu">הכניסה לסביבת הבדיקות מוגנת בסיסמה נוספת.</p>' . ($gerr !== '' ? '<p class="er">' . htmlspecialchars($gerr, ENT_QUOTES, 'UTF-8') . '</p>' : '') . '<form method="post"><label>סיסמת גישה<input type="password" name="_gate" autocomplete="off" autofocus required></label><button>המשך</button></form>')
+       . '</div></main></body></html>';
+    exit;
+  }
+}
+
 function now(): string { return date('Y-m-d H:i:s'); }
 function redirect(string $to): never { header('Location: ' . $to); exit; }
 
@@ -198,7 +223,7 @@ function audit(string $action, string $entity = '', string $id = '', string $det
 function asset_v(string $f): string { $p = ($_SERVER['DOCUMENT_ROOT'] ?? '') . '/app/assets/' . $f; return is_file($p) ? (string)filemtime($p) : '1'; }
 function page_head(string $title, bool $nav = true): void {
   echo '<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-     . '<meta name="robots" content="noindex,nofollow"><title>' . e($title) . ' – עלמא</title><link rel="icon" href="/app/assets/favicon.ico?v=' . asset_v('favicon.ico') . '" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/app/assets/icon-32.png?v=' . asset_v('icon-32.png') . '"><link rel="icon" type="image/png" sizes="192x192" href="/app/assets/icon-192.png?v=' . asset_v('icon-192.png') . '"><link rel="apple-touch-icon" href="/app/assets/apple-touch-icon.png?v=' . asset_v('apple-touch-icon.png') . '"><link rel="manifest" href="/app/assets/manifest.json?v=' . asset_v('manifest.json') . '"><meta name="theme-color" content="#7ba23a"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="עלמא"><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"><script src="/app/assets/app.js?v=' . asset_v('app.js') . '" defer></script></head><body>';
+     . '<meta name="robots" content="noindex,nofollow"><title>' . (is_test_env() ? '[בדיקות] ' : '') . e($title) . ' – עלמא</title><link rel="icon" href="/app/assets/favicon.ico?v=' . asset_v('favicon.ico') . '" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/app/assets/icon-32.png?v=' . asset_v('icon-32.png') . '"><link rel="icon" type="image/png" sizes="192x192" href="/app/assets/icon-192.png?v=' . asset_v('icon-192.png') . '"><link rel="apple-touch-icon" href="/app/assets/apple-touch-icon.png?v=' . asset_v('apple-touch-icon.png') . '"><link rel="manifest" href="/app/assets/manifest.json?v=' . asset_v('manifest.json') . '"><meta name="theme-color" content="#7ba23a"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="עלמא"><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"><script src="/app/assets/app.js?v=' . asset_v('app.js') . '" defer></script></head><body' . (is_test_env() ? ' class="envtest"' : '') . '>' . (is_test_env() ? '<div class="envbar">סביבת בדיקות · נתונים מומצאים · לא נשלחות הודעות אמיתיות · <a href="' . e(env_other_url()) . '">מעבר לאתר האמיתי</a></div>' : '');
   if ($nav && ($u = user())) {
     $cur = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
     $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'income_pending.php' => 'collection.php', 'payments_import.php' => 'collection.php', 'monthly.php' => 'collection.php', 'dashboard.php' => 'collection.php', 'charges.php' => 'collection.php', 'gad.php' => 'collection.php', 'income_import.php' => 'collection.php', 'registrations.php' => 'students.php', 'moe_sync.php' => 'students.php', 'oldsync.php' => 'import.php', 'rollover.php' => 'import.php', 'exports.php' => 'import.php'];
@@ -227,6 +252,7 @@ function page_head(string $title, bool $nav = true): void {
       foreach ([['תקציב', 'budget', $bud], ['ניהול', 'admin', $adm], ['תחזוקה', 'maint', $mnt]] as [$tt, $ik, $set]) {
         echo '<details class="menu' . (isset($set[$on]) ? ' on' : '') . '"><summary title="' . $tt . '">' . $ic($icons[$ik]) . '<span>' . $tt . '</span></summary><div class="dd">';
         foreach ($set as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';
+        if ($ik === 'maint') echo '<a href="' . e(env_other_url()) . '" class="envlnk">' . (is_test_env() ? 'חזרה לאתר האמיתי' : 'סביבת בדיקות') . '</a>' . (is_test_env() ? '<a href="testmail.php"' . ($on === 'testmail.php' ? ' class="on"' : '') . '>תיבת דואר בדיקות</a>' : '');
         echo '</div></details>';
       }
     }
