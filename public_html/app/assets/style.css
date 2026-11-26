@@ -339,3 +339,4 @@ body.envtest .top{top:28px}body.envtest .sub{top:calc(var(--hh) + 28px)}
 .pre{white-space:pre-wrap;word-break:break-word;font:inherit;margin:0}
 button.wa,.btn.wa{background:#25d366;color:#0b3d1c;border-color:#25d366}button.wa:hover{filter:brightness(.95)}
 tr.mhd td{background:#eef3f8;border-top:2px solid #9db4cc;padding:.5em .6em}
+.role.r-registrar{background:#e3efe6}

@@ -1,9 +1,10 @@
 <?php
 require __DIR__ . '/../../private/lib/bootstrap.php';
-$u = require_role(['admin', 'secretary']);
-$isAdmin = $u['role'] === 'admin';
+$u = require_role(['admin', 'secretary', 'registrar']);
+$isAdmin = $u['role'] === 'admin'; $ro = $u['role'] === 'registrar';   // רשמת: צפייה בלבד
 $pdo = db(); $err = ''; $msg = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  if ($ro) fail_page(403, 'אין לך הרשאה לשנות נתונים.');
   csrf_check();
   $act = (string)($_POST['act'] ?? ''); $lid = (int)($_POST['id'] ?? 0);
   $q = $pdo->prepare('SELECT * FROM sibling_leads WHERE id = ?'); $q->execute([$lid]); $L = $q->fetch();
@@ -63,7 +64,7 @@ $back = array_filter($f, fn($v) => $v !== '');
 page_head('מאגר אחים');
 ?>
 <h1>מאגר אחים ואחיות</h1>
-<p class="mu">אחים ואחיות של התלמידות, כפי שנקראו מהספח. מאגר של תלמידות פוטנציאליות לרישום בהמשך. הנתונים רגישים: צפייה לשימוש הצוות בלבד.</p>
+<p class="mu">אחים ואחיות של התלמידות, כפי שנקראו מהספח. מאגר של תלמידות פוטנציאליות לרישום בהמשך. הנתונים רגישים: צפייה לשימוש הצוות בלבד.<?= $ro ? ' (צפייה בלבד)' : '' ?></p>
 <?php if ($msg) echo '<p class="ok">' . e($msg) . '</p>'; if ($err) echo '<p class="er">' . e($err) . '</p>'; ?>
 <div class="tiles">
   <div class="tile"><span class="mu">במאגר</span><b><?= $tot ?></b></div>
@@ -75,7 +76,7 @@ page_head('מאגר אחים');
   <label>כניסה לז׳ בשנת<select name="y"><option value="">הכול</option><?php foreach ($years as $y) echo '<option value="' . (int)$y . '"' . ($f['y'] === (string)$y ? ' selected' : '') . '>' . e(heb_school_year((int)$y)) . ' (' . (int)$y . '/' . substr((string)((int)$y + 1), 2) . ')</option>'; ?></select></label>
   <label>כבר תלמידות בעלמא<select name="sh"><option value="hide">להסתיר</option><option value="show"<?= $f['sh'] === 'show' ? ' selected' : '' ?>>להציג</option></select></label>
   <button>הצגה</button>
-  <a class="btn sec" href="leads.php?<?= e(http_build_query($back + ['csv' => 1])) ?>">ייצוא ל-CSV</a>
+  <a class="btn sec" href="leads.php?<?= e(http_build_query($back + ['csv' => 1])) ?>">ייצוא לאקסל (CSV)</a>
 </form>
 <p class="mu"><?= count($rows) ?> רשומות</p>
 <div class="sc"><table class="ltab">
@@ -90,9 +91,9 @@ page_head('מאגר אחים');
     <td><?= $l['dob'] ? e(date('d/m/Y', strtotime($l['dob']))) . ' <span class="mu">(' . $age . ')</span>' : '<span class="mu">—</span>' ?></td>
     <td><?= e(LEAD_GENDER[$l['gender']] ?? '—') ?></td>
     <td><?= e(lead_grade_now((string)$l['dob']) ?: '—') ?><?= $ey ? '<br><span class="mu">ז׳ ב' . e(heb_school_year($ey)) . '</span>' : '' ?></td>
-    <td><?php foreach ($ss as $i => $s) echo ($i ? ', ' : '') . '<a href="student.php?id=' . (int)$s['id'] . '">' . e($s['name']) . '</a>'; ?></td>
+    <td><?php foreach ($ss as $i => $s) echo ($i ? ', ' : '') . ($ro ? e($s['name']) : '<a href="student.php?id=' . (int)$s['id'] . '">' . e($s['name']) . '</a>'); ?></td>
     <td dir="ltr"><?= e(implode(' / ', array_map('fmt_phone', $ph))) ?: '—' ?></td>
-    <td>
+    <td><?php if (!$ro): ?>
       <details class="mt"><summary class="mu">עריכה</summary>
         <form method="post" class="fg"><?= csrf_field() ?><input type="hidden" name="act" value="edit"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
           <?php foreach ($back as $k => $v) echo '<input type="hidden" name="back[' . e($k) . ']" value="' . e($v) . '">'; ?>
@@ -101,7 +102,7 @@ page_head('מאגר אחים');
           <label>מין<select name="g"><option value="">—</option><?php foreach (LEAD_GENDER as $k => $v) echo '<option value="' . $k . '"' . ($l['gender'] === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
           <div class="acts"><button class="btn">עדכון</button></div></form>
         <?php if ($isAdmin): ?><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><?php foreach ($back as $k => $v) echo '<input type="hidden" name="back[' . e($k) . ']" value="' . e($v) . '">'; ?><button class="btn sec er">מחיקה מהמאגר</button></form><?php endif; ?>
-      </details>
+      </details><?php endif; ?>
     </td>
   </tr>
   <?php endforeach; if (!$rows) echo '<tr><td colspan="8" class="mu">אין רשומות להצגה. הוספה נעשית מכרטיס תלמידה: "קריאת ספח" בקטע מסמכים, או בהקלדה ידנית.</td></tr>'; ?>

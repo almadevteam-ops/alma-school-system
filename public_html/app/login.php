@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../../private/lib/bootstrap.php';
-if (user()) redirect('students.php');
+if (user()) redirect(home_page());
 $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();

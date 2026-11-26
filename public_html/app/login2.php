@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../../private/lib/bootstrap.php';
-if (user()) redirect('students.php');
+if (user()) redirect(home_page());
 $p = $_SESSION['p2'] ?? null;
 if (!$p || time() - (int)$p['t'] > 900) { audit('login2_bounce', 'system', '', ($p ? 'expired' : 'no_session_state') . '; cookie=' . (isset($_COOKIE['ALMASESS']) ? 'yes' : 'no') . '; ' . mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)); unset($_SESSION['p2']); redirect('login.php'); }
 $uid = (int)$p['id'];
