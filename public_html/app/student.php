@@ -171,7 +171,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
   <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$id ?>">
   <div class="fg">
   <?php foreach ($F as $k => [$lbl, $max, $sens]):
-    if ($sens && !can_see_ids()) continue;
+    if ($sens && !can_see_idnum()) continue;
     $lock = $ro || ($id && !$isAdmin && in_array($k, ADMIN_ONLY, true));
     $dis = $lock ? ' disabled' : '';
     $curv = ($k === 'hmo' && ($row['hmo'] ?? '') === HMO_UNKNOWN) ? '' : (string)($row[$k] ?? ''); $isReq = in_array($k, ['name', 'grade'], true) || (in_array($k, REQUIRED, true) && (!$id || $curv !== '')); $req = $isReq && !$lock; $star = $isReq ? ' <span class="req">*</span>' : '';
@@ -220,6 +220,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
       <input name="allergy_other" maxlength="120" placeholder="פירוט (אחר)" value="<?= e((string)$val('allergy_other')) ?>"<?= $ro ? ' disabled' : '' ?>>
     </div>
   </div>
+  <?php if ($u['role'] !== 'counselor'): ?>   <?php /* יועצת לא רואה הנחות ונתוני גבייה */ ?>
   <div class="wide dsc"><label class="chk"><input type="checkbox" name="disc_on" value="1" data-tg="disc"<?= $val('disc_on') ? ' checked' : '' ?><?= $ro ? ' disabled' : '' ?>> יש הנחה <?php if ($val('disc_on') && ($val('disc_status') ?: 'approved') === 'pending') echo '<span class="pill pending">ממתינה לאישור</span>'; ?></label>
     <div class="fg" data-g="disc"<?= $val('disc_on') ? '' : ' hidden' ?>>
       <label>הנחה לחודש (₪)<input name="disc_amt" inputmode="decimal" value="<?= e($val('disc_amt') ? rtrim(rtrim((string)$val('disc_amt'), '0'), '.') : '') ?>"<?= $ro ? ' disabled' : '' ?>></label>
@@ -230,6 +231,7 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     </div>
     <?php if (!$isAdmin): ?><p class="mu" data-g="disc"<?= $val('disc_on') ? '' : ' hidden' ?>>הנחה שנקבעה או שונתה על ידך תמתין לאישור מנהלת.</p><?php endif; ?>
   </div>
+  <?php endif; ?>
   <label>סטטוס<select name="status" data-orig="<?= e($val('status') ?: 'active') ?>"<?= ($ro || !$isAdmin || !$id) ? ' disabled' : '' ?>><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . (($val('status') ?: 'active') === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
   <label id="lmwrap"<?= $val('status') === 'left' ? '' : ' hidden' ?>>עזבה מחודש<select name="left_month"<?= ($ro || !$isAdmin) ? ' disabled' : '' ?>><option value="">—</option><?php foreach (SCHOOL_MONTHS as $i => $mn) echo '<option value="' . ($i + 1) . '"' . ((int)$val('left_month') === $i + 1 ? ' selected' : '') . '>' . e($mn) . '</option>'; ?></select></label>
   <?php if ($isAdmin && $id): ?><label class="wide" id="stnote"<?= (($val('status_note') ?? '') === '') ? ' hidden' : '' ?>>סיבת שינוי הסטטוס (חובה)<input name="status_note" maxlength="500" value="<?= e((string)($row['status_note'] ?? '')) ?>" placeholder="למשל: עברה למוסד אחר"></label><?php endif; ?>

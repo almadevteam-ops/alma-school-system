@@ -184,7 +184,7 @@ function require_login(): array {
     redirect('login.php');
   }
   $_SESSION['user'] = ['id' => (int)$row['id'], 'username' => $row['username'], 'name' => $row['display_name'], 'role' => $row['role'], 'totp' => (int)$row['totp_enabled']];
-  if ($row['role'] === 'registrar' && !in_array($page, ['leads.php', 'security.php', 'logout.php'], true)) redirect('leads.php');   // רשמת: רק מאגר האחים (ואבטחת החשבון)
+  if (isset(ROLE_PAGES[$row['role']]) && !in_array($page, array_merge(ROLE_PAGES[$row['role']], ['security.php', 'logout.php']), true)) redirect(home_page($_SESSION['user']));   // תפקידים מוגבלים: רק הדפים שלהם (ואבטחת החשבון)
   if (cfg('require_2fa', true) && !(int)$row['totp_enabled'] && !in_array($page, ['security.php', 'logout.php'], true)) redirect('security.php');
   return $_SESSION['user'];
 }
@@ -209,6 +209,8 @@ function require_role(array $roles): array {
   return $u;
 }
 function can_see_ids(): bool { return in_array(user()['role'] ?? '', ['admin', 'secretary'], true); }
+/** צפייה במספרי זהות (בלי גישה לקבצי הזהות עצמם). */
+function can_see_idnum(): bool { return in_array(user()['role'] ?? '', ['admin', 'secretary', 'counselor'], true); }
 function can_edit(): bool { return in_array(user()['role'] ?? '', ['admin', 'secretary'], true); }
 function hash_pw(string $pw): string { return password_hash($pw, defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT); }
 function pw_ok(string $pw): ?string {
@@ -247,7 +249,7 @@ function page_head(string $title, bool $nav = true): void {
       'admin' => '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>',
     ];
     echo '<header class="top"><a class="brand" href="' . home_page($u) . '"><img src="/app/assets/logo-mark.png" alt="" width="30" height="30"><b>עלמא</b></a><nav>';
-    $main = ['students.php' => 'תלמידות', 'collection.php' => 'גבייה']; if ($u['role'] === 'registrar') $main = ['leads.php' => 'מאגר אחים']; if (in_array($u['role'], ['admin', 'secretary'], true)) { $main['mailing.php'] = 'דיוור'; $main['documents.php'] = 'מסמכים'; $main['leads.php'] = 'מאגר אחים'; } if ($u['role'] !== 'registrar' && in_array($u['role'], COLLECTION_ROLES, true)) $main['reminders.php'] = 'תזכורות'; $main['security.php'] = 'אבטחה';
+    $main = ['students.php' => 'תלמידות', 'collection.php' => 'גבייה']; if ($u['role'] === 'registrar') $main = ['leads.php' => 'מאגר אחים']; if ($u['role'] === 'counselor') $main = ['students.php' => 'תלמידות']; if (in_array($u['role'], ['admin', 'secretary'], true)) { $main['mailing.php'] = 'דיוור'; $main['documents.php'] = 'מסמכים'; $main['leads.php'] = 'מאגר אחים'; } if (in_array($u['role'], COLLECTION_ROLES, true)) $main['reminders.php'] = 'תזכורות'; $main['security.php'] = 'אבטחה';
     foreach ($main as $f => $l)
       echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . ' title="' . e($l) . '">' . $ic($icons[$f]) . '<span>' . e($l) . '</span></a>';
     if ($u['role'] === 'admin') {
@@ -280,6 +282,8 @@ function page_foot(): void { $v = app_version(); echo '</main>' . ($v !== '' && 
 
 const GRADES = ['ז', 'ח', 'ט', 'י', 'יא', 'יב'];
 const STATUS = ['active' => 'פעילה', 'left' => 'עזבה', 'pending' => 'ממתינה לאישור'];
-const ROLES = ['admin' => 'מנהלת מערכת', 'secretary' => 'מזכירות', 'finance' => 'גבייה (צפייה בלבד, בלי מסמכים וזהויות)', 'registrar' => 'רשמת (מאגר אחים בצפייה בלבד)'];
+const ROLES = ['admin' => 'מנהלת מערכת', 'secretary' => 'מזכירות', 'finance' => 'גבייה (צפייה בלבד, בלי מסמכים וזהויות)', 'registrar' => 'רשמת (מאגר אחים בצפייה בלבד)', 'counselor' => 'יועצת (תלמידות בצפייה בלבד)'];
+/** תפקידים מוגבלים: הדפים היחידים שמותרים להם (בנוסף לאבטחה ויציאה). */
+const ROLE_PAGES = ['registrar' => ['leads.php'], 'counselor' => ['students.php', 'student.php']];
 /** דף הבית לפי תפקיד. */
 function home_page(?array $u = null): string { $u = $u ?? user(); return ($u['role'] ?? '') === 'registrar' ? 'leads.php' : 'students.php'; }

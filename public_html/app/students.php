@@ -13,6 +13,7 @@ $w = ['archived_at IS NULL']; $a = [];
 if ($q !== '') { $w[] = '(name LIKE ? OR idn LIKE ? OR phone LIKE ? OR f_phone LIKE ? OR m_phone LIKE ?)'; $l = '%' . $q . '%'; array_push($a, $l, $l, $l, $l, $l); }
 if (in_array($g, GRADES, true)) { $w[] = 'grade = ?'; $a[] = $g; }
 if ($c !== '') { $w[] = 'city LIKE ?'; $a[] = '%' . $c . '%'; }
+if ($u['role'] === 'counselor' && in_array($x, ['disc', 'pend'], true)) $x = '';
 if (isset(STATUS[$s])) { $w[] = 'status = ?'; $a[] = $s; }
 if ($x === 'apt') $w[] = '(is_apt = 1 OR family_id IN (SELECT id FROM families WHERE payer_kind = \'org\'))';
 elseif ($x === 'vaada') $w[] = 'vaada = 1'; elseif ($x === 's07') $w[] = 's07 = 1'; elseif ($x === 'allergy') $w[] = 'allergy = 1';
@@ -36,7 +37,7 @@ function stu_rows(array $rows, int $off0, bool $coll): void { ?>
     </summary>
     <div class="mgb dt">
       <dl class="kv">
-        <div><dt>תעודת זהות</dt><dd><?= can_see_ids() && $r['idn'] !== '' ? '<bdi dir="ltr">' . e(mask($r['idn'])) . '</bdi>' : '<span class="mu">—</span>' ?></dd></div>
+        <div><dt>תעודת זהות</dt><dd><?= can_see_idnum() && $r['idn'] !== '' ? '<bdi dir="ltr">' . e(mask($r['idn'])) . '</bdi>' : '<span class="mu">—</span>' ?></dd></div>
         <div><dt>כתובת</dt><dd><?= $r['addr'] !== '' || $r['city'] !== '' ? e(trim(trim($r['addr'] . ' ' . $r['house_no']) . ', ' . $r['city'], ' ,')) : '<span class="mu">—</span>' ?></dd></div>
         <div><dt>מייל</dt><dd><?= $r['email'] !== '' ? '<bdi dir="ltr">' . e($r['email']) . '</bdi>' : '<span class="mu">—</span>' ?></dd></div>
       </dl>
@@ -65,7 +66,7 @@ page_head('תלמידות');
   <label>כיתה<select name="g"><option value="">הכל</option><?php foreach (GRADES as $x) echo '<option' . ($g === $x ? ' selected' : '') . '>' . e($x) . '</option>'; ?></select></label>
   <label>עיר<input name="c" value="<?= e($c) ?>" placeholder="למשל חיפה"></label>
   <label>סטטוס<select name="s"><option value="">הכל</option><?php foreach (STATUS as $k => $v) echo '<option value="' . $k . '"' . ($s === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
-  <label>הצגה<select name="x"><option value="">הכל</option><?php foreach (XF as $k => $v) echo '<option value="' . $k . '"' . ($x === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
+  <label>הצגה<select name="x"><option value="">הכל</option><?php foreach (XF as $k => $v) if (!($u['role'] === 'counselor' && in_array($k, ['disc', 'pend'], true))) echo '<option value="' . $k . '"' . ($x === $k ? ' selected' : '') . '>' . e($v) . '</option>'; ?></select></label>
   <button>OK</button>
   <a class="btn sec<?= ($q !== '' || $g !== '' || $c !== '' || $s !== 'active' || $x !== '') ? ' hot' : '' ?>" href="students.php" title="איפוס כל הסינונים">↺ איפוס</a>
   <?php if (can_edit()) echo '<a class="btn sec" href="student.php">+ תלמידה חדשה</a>'; ?>
