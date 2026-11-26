@@ -330,3 +330,4 @@ tr.edr>td{background:#f6f1fa;padding:10px 12px;white-space:normal}tr.edr .edf{ma
 .plr.warn td{background:rgba(232,163,23,.10)}.plr.over td{background:rgba(192,57,43,.10)}
 .bgb.pl2{grid-template-columns:minmax(110px,190px) 1fr 52px}
 @media(max-width:700px){.top{height:auto;min-height:var(--hh);padding:6px 10px;gap:6px}.top nav{flex-wrap:wrap;gap:2px}.top .brand b{display:none}.sub{position:static}}
+@media(max-width:700px){.top nav .menu{position:static}.top nav .dd{position:absolute;top:100%;left:8px;right:8px;inset-inline-start:8px;inset-inline-end:8px;min-width:0;max-height:70vh;overflow-y:auto;margin-top:2px}.top nav .dd a{padding:12px 14px}}
