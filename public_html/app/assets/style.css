@@ -329,3 +329,4 @@ tr.edr>td{background:#f6f1fa;padding:10px 12px;white-space:normal}tr.edr .edf{ma
 .bgb i.warn{background:#e8a317}.bgb i.over{background:#c0392b}.bgb.pl{grid-template-columns:1fr 52px;min-width:150px}
 .plr.warn td{background:rgba(232,163,23,.10)}.plr.over td{background:rgba(192,57,43,.10)}
 .bgb.pl2{grid-template-columns:minmax(110px,190px) 1fr 52px}
+@media(max-width:700px){.top{height:auto;min-height:var(--hh);padding:6px 10px;gap:6px}.top nav{flex-wrap:wrap;gap:2px}.top .brand b{display:none}.sub{position:static}}
