@@ -920,6 +920,12 @@
   });
 })();
 
+// שליחה בוואטסאפ: אחרי הכנת ההודעה פותחים את וואטסאפ אוטומטית
+(function () {
+  var a = document.getElementById('waopen'); if (!a || !a.getAttribute('data-auto')) return;
+  setTimeout(function () { location.href = a.href; }, 500);
+})();
+
 // כניסה: מונע לחיצה כפולה על "כניסה" / "אישור" (שליחת קוד במייל לוקחת כמה שניות)
 (function () {
   var f = document.querySelector('.card.login form'); if (!f) return;
@@ -930,3 +936,6 @@
 (function () { var r = document.getElementById('edrow'); if (r && r.scrollIntoView) r.scrollIntoView({ block: 'center' }); })();
 
 (function () { if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).catch(function () {}); }); })();
+
+// ייבוא טלפונים: "סימון הכול"
+(function () { var a = document.getElementById('phall'); if (!a) return; a.addEventListener('change', function () { document.querySelectorAll('input.phc').forEach(function (c) { c.checked = a.checked; }); }); })();

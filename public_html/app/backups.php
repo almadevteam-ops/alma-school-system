@@ -108,6 +108,12 @@ page_head('גיבויים');
   </details>
   <?php if (gd_ready()): ?><form method="post" class="bar"><?= csrf_field() ?><button name="act" value="gd_check" class="sec">בדיקת חיבור</button><button name="act" value="gd_run">סנכרון לדרייב עכשיו</button></form><?php endif; ?>
   <?php endif; ?>
+  <?php if (bdrive_cols() && gd_ready()): $bp = bdrive_pending(); $bl = setting_get('bdrive_last_err', ''); ?>
+    <h3>גיבוי חשבוניות לדרייב</h3>
+    <p class="mu">כל חשבונית וקבלה בתקציב מועלית אוטומטית, מיד עם ההעלאה (והגיבוי הקבוע משלים כל מה שנכשל), לתיקיה "<?= e(BDRIVE_ROOT) ?>" (בתוך תיקיית הגיבויים), בתת-תיקיה לכל חודש, בשם העסק. <b>הקבצים האלה אינם מוצפנים</b> (כדי שיהיו קריאים בדרייב) ולכן יש להגביל את הגישה לתיקיה.</p>
+    <p class="<?= $bl !== '' ? 'er' : 'ok' ?>"><?= bdrive_on() ? 'פעיל' : 'כבוי' ?> · ממתינות לגיבוי: <?= $bp ?><?php if ($t = setting_get('bdrive_last_ok', '')): ?> · הועלתה לאחרונה: <?= e(date('d/m/Y H:i', strtotime($t))) ?><?php endif; ?><?= $bl !== '' ? ' · שגיאה אחרונה: ' . e($bl) : '' ?></p>
+    <?php if (gd_mode() === 'script'): ?><p class="mu">במצב Apps Script צריך להדביק מחדש את הקוד העדכני (למעלה, "הקוד להדבקה") ולפרסם גרסה חדשה, פעם אחת, כדי שיתמוך בתיקיות החודשים.</p><?php endif; ?>
+  <?php endif; ?>
 </div>
 <div class="card">
   <details<?= $healthy ? '' : ' open' ?>><summary><h2 class="inl">הפעלה אוטומטית (cron)<?= $healthy ? ' ✓ פועל' : '' ?></h2></summary>

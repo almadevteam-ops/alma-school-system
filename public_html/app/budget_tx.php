@@ -180,6 +180,9 @@ $msg = $_SESSION['bmsg'] ?? null; unset($_SESSION['bmsg']);
 $q = db()->prepare("SELECT COUNT(*) n, SUM(CASE WHEN is_income=0 THEN amount ELSE 0 END) ex, SUM(CASE WHEN is_income=1 THEN amount ELSE 0 END) inc FROM budget_tx $wh"); $q->execute($wa); $tot = $q->fetch();
 $per = 200; $pages = max(1, (int)ceil((int)$tot['n'] / $per)); $p = min($pages, max(1, (int)($_GET['p'] ?? 1)));
 $q = db()->prepare("SELECT * FROM budget_tx $wh ORDER BY {$SORT[$sk]} $sd, id $sd LIMIT $per OFFSET " . (($p - 1) * $per)); $q->execute($wa); $rows = $q->fetchAll(); $hasPay = bpay_ready(); $bdocs = $hasPay ? bdoc_by_tx(array_map('intval', array_column($rows, 'id'))) : [];
+$lastM = ''; $mSum = [];
+$q = db()->prepare("SELECT DATE_FORMAT(tx_date,'%Y-%m') k, COUNT(*) n, SUM(CASE WHEN is_income=0 THEN amount ELSE 0 END) ex, SUM(CASE WHEN is_income=1 THEN amount ELSE 0 END) inc FROM budget_tx $wh GROUP BY k"); $q->execute($wa);
+foreach ($q->fetchAll() as $r) $mSum[$r['k']] = $r;
 $editId = (int)($_GET['edit'] ?? 0); $ed = null;
 if ($editId) { $q = db()->prepare('SELECT * FROM budget_tx WHERE id=?'); $q->execute([$editId]); $ed = $q->fetch() ?: null; }
 $showForm = $ed || isset($_GET['add']);
@@ -219,15 +222,22 @@ page_head('תקציב – תנועות');
   <label>יחידה<select name="unit"><?= $opt($units, $f['unit'], 'הכול') ?></select></label>
   <label>סוג<select name="type"><option value="">הכול</option><option value="out"<?= $f['type'] === 'out' ? ' selected' : '' ?>>הוצאות</option><option value="in"<?= $f['type'] === 'in' ? ' selected' : '' ?>>הכנסות</option></select></label>
   <label>מסמכים<select name="doc"><?php foreach ([''=>'הכול','ni'=>'חסרה חשבונית','nr'=>'חסרה קבלה','nb'=>'חסרים שניהם','ok'=>'יש חשבונית וקבלה'] as $k => $l) echo '<option value="' . $k . '"' . ($f['doc'] === $k ? ' selected' : '') . '>' . e($l) . '</option>'; ?></select></label>
-  <?php if ($f['month']) echo '<input type="hidden" name="month" value="' . e($f['month']) . '"><span class="pill">חודש ' . e(substr($f['month'], 5) . '/' . substr($f['month'], 0, 4)) . ' <a href="' . e('budget_tx.php?' . http_build_query(array_diff_key($keep, ['month' => 1, 'p' => 1]))) . '">הסרה</a></span>'; ?>
+  <?= budget_month_select($f) ?>
 </form>
 <p><b><?= (int)$tot['n'] ?></b> תנועות · הוצאות <b><?= e(budget_money0($tot['ex'])) ?></b> · הכנסות <b class="ok"><?= e(budget_money0($tot['inc'])) ?></b> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'csv=1') ?>">ייצוא CSV (לפי הסינון)</a> · <a href="<?= e($self . (str_contains($self, '?') ? '&' : '?') . 'xpdf=1') ?>">ייצוא PDF (לפי הסינון)</a></p>
+<?php if ($mSum): krsort($mSum); $mo = array_diff_key($keep, ['month' => 1, 'p' => 1]); ?>
+<p class="subnav"><a class="btn<?= $f['month'] === '' ? '' : ' sec' ?>" href="<?= e('budget_tx.php' . ($mo ? '?' . http_build_query($mo) : '')) ?>">כל החודשים</a> <?php foreach ($mSum as $k => $m) echo '<a class="btn' . ($f['month'] === (string)$k ? '' : ' sec') . '" href="' . e('budget_tx.php?' . http_build_query($mo + ['month' => $k])) . '">' . e(budget_month_label((string)$k)) . ' (' . (int)$m['n'] . ')</a> '; ?></p>
+<?php endif; ?>
 <?php if ($rows): ?>
 <form method="post" class="autosave" action="<?= e($self) ?>"><?= csrf_field() ?><input type="hidden" name="act" value="save">
 <div class="bar"><span class="asv mu" role="status" aria-live="polite">שינויים בקטגוריה, בחשבונית ובקבלה נשמרים אוטומטית.</span> <label class="inl"><input type="checkbox" name="learn" value="1" checked> זכרי שיוך של תנועה שלא שויכה (לפי שם הספק) גם לפעם הבאה</label></div>
 <div class="card sc"><table>
 <tr><th><?= $sortLink('d', 'תאריך') ?></th><th><?= $sortLink('n', 'שם') ?></th><th>תיאור</th><th>אסמכתה</th><th><?= $sortLink('a', 'סכום') ?></th><th><?= $sortLink('c', 'קטגוריה') ?></th><th><?= $sortLink('u', 'יחידה') ?></th><th>חשבונית</th><th>קבלה</th><?= $hasPay ? '<th>שולם</th>' : '' ?><th></th></tr>
-<?php foreach ($rows as $r): $id = (int)$r['id']; ?>
+<?php foreach ($rows as $r): $id = (int)$r['id'];
+  $mk = substr($r['tx_date'], 0, 7);
+  if ($sk === 'd' && $mk !== $lastM): $lastM = $mk; $ms = $mSum[$mk] ?? ['n' => 0, 'ex' => 0, 'inc' => 0]; ?>
+<tr class="mhd"><td colspan="<?= $hasPay ? 11 : 10 ?>"><b><?= e(budget_month_label($mk)) ?></b> · <?= (int)$ms['n'] ?> תנועות · הוצאות <b><?= e(budget_money0($ms['ex'])) ?></b> · הכנסות <b class="ok"><?= e(budget_money0($ms['inc'])) ?></b></td></tr>
+<?php endif; ?>
 <tr<?= $r['category'] === '' ? ' class="unm"' : '' ?>><td class="n"><?= e(date('d/m/Y', strtotime($r['tx_date']))) ?><input type="hidden" name="ids[]" value="<?= $id ?>"></td><td><?= $r['is_income'] ? e($r['name']) : '<a href="budget_suppliers.php?y=all&amp;s=' . rawurlencode(trim($r['name'])) . '">' . e($r['name']) . '</a>' ?></td><td><?= e($r['descr']) ?></td><td><?= e($r['ref']) ?></td>
 <td class="n<?= $r['is_income'] ? ' ok' : '' ?>"><bdi dir="ltr"><?= $r['is_income'] ? '+' : '' ?><?= e(budget_money($r['amount'])) ?></bdi></td>
 <td><select name="cat[<?= $id ?>]"><?= $opt($cats, $r['category'], '— לא משויך —') ?></select></td><td><select name="unit[<?= $id ?>]" aria-label="יחידה"><?= $opt($units, (string)$r['unit']) ?></select></td>

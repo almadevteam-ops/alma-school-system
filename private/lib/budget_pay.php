@@ -20,7 +20,8 @@ function bdoc_save(array $f, string $kind, ?int $txId, ?int $payId, string $by):
   $name = bin2hex(random_bytes(16)) . '.' . $ext;
   if (!@move_uploaded_file($f['tmp_name'], bdoc_dir() . '/' . $name) && !@copy($f['tmp_name'], bdoc_dir() . '/' . $name)) return [0, 'שמירת הקובץ נכשלה.'];
   db()->prepare('INSERT INTO budget_docs (tx_id, payable_id, kind, orig_name, stored, mime, size, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)')->execute([$txId, $payId, $kind === 'rec' ? 'rec' : 'inv', mb_substr(preg_replace('/[\r\n]+/', ' ', (string)$f['name']), 0, 200), $name, $mime, (int)$f['size'], mb_substr($by, 0, 100), now()]);
-  return [(int)db()->lastInsertId(), ''];
+  $newId = (int)db()->lastInsertId(); try { bdrive_after(); } catch (Throwable $t) {}
+  return [$newId, ''];
 }
 function bdoc_delete(int $id): bool {
   $st = db()->prepare('SELECT stored FROM budget_docs WHERE id = ?'); $st->execute([$id]); $r = $st->fetch(); if (!$r) return false;

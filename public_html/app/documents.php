@@ -3,8 +3,9 @@ require __DIR__ . '/../../private/lib/bootstrap.php';
 $u = require_role(['admin', 'secretary']); $by = (string)$u['name'];
 if (!docs_ready()) { page_head('מסמכים'); echo '<h1>מסמכים</h1><p class="aptn">כדי להפעיל את המסמכים יש להריץ "עדכון מסד נתונים" (תחזוקה).</p>'; page_foot(); exit; }
 $msg = ''; $err = ''; $self = 'documents.php'; $recips = null;
+if (isset($_SESSION['docmsg']) && $_SERVER['REQUEST_METHOD'] !== 'POST') { [$fok, $ftx] = $_SESSION['docmsg']; unset($_SESSION['docmsg']); if ($fok) $msg = (string)$ftx; else $err = (string)$ftx; }
 $back = (string)($_POST['back'] ?? ''); $back = preg_match('~^student\.php\?id=\d+(&open=[a-z,]+)?$~', $back) ? $back : '';
-$done = function (bool $ok, string $t) use (&$msg, &$err, $back) { if ($back !== '') { $_SESSION['docmsg'] = [$ok, $t]; redirect($back); } if ($ok) $msg = $t; else $err = $t; };
+$done = function (bool $ok, string $t) use (&$msg, &$err, $back) { $_SESSION['docmsg'] = [$ok, $t]; redirect($back !== '' ? $back : 'documents.php'); };   // תמיד חוזרים לדף (PRG): אין שליחה חוזרת של הטופס ואין דף שנשאר פתוח על הפעולה
 $years = function (): array { $y = doc_year_start(); return [$y - 1, $y, $y + 1]; };
 $pdfOut = function (string $pdf, string $name, bool $inline) { header('Content-Type: application/pdf'); header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . "; filename*=UTF-8''" . rawurlencode($name)); header('Content-Length: ' . strlen($pdf)); echo $pdf; exit; };
 $ysel = function () use ($years): int { $y = (int)($_POST['year'] ?? 0); return in_array($y, $years(), true) ? $y : doc_year_start(); };
@@ -12,23 +13,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check(); $act = (string)($_POST['act'] ?? ''); $sid = (int)($_POST['student_id'] ?? 0);
   if ($act === 'tpl_save') {
     $id = (int)($_POST['tid'] ?? 0); $name = mb_substr(trim((string)($_POST['name'] ?? '')), 0, 100); $title = mb_substr(trim((string)($_POST['title'] ?? '')), 0, 150); $body = trim((string)($_POST['body'] ?? ''));
-    if ($name === '' || $title === '' || $body === '') $err = 'יש למלא שם תבנית, כותרת ותוכן.';
+    if ($name === '' || $body === '') $err = 'יש למלא שם תבנית ותוכן (כותרת אינה חובה).';
     else {
       $al = ($_POST['align'] ?? 'c') === 'r' ? 'r' : 'c'; $sg = isset($_POST['signed']) ? 1 : 0;
       if ($id > 0 && doc_template($id)) { db()->prepare('UPDATE doc_templates SET name=?, title=?, body=?, align=?, signed=?, updated_at=? WHERE id=?')->execute([$name, $title, $body, $al, $sg, now(), $id]); audit('doc_tpl_edit', 'doc', (string)$id, $name); }
       else { db()->prepare('INSERT INTO doc_templates (name,title,body,align,signed,builtin,created_at,updated_at) VALUES (?,?,?,?,?,0,?,?)')->execute([$name, $title, $body, $al, $sg, now(), now()]); $id = (int)db()->lastInsertId(); audit('doc_tpl_add', 'doc', (string)$id, $name); }
-      $msg = 'התבנית "' . $name . '" נשמרה.';
+      $_SESSION['docmsg'] = [true, 'התבנית "' . $name . '" נשמרה.']; redirect('documents.php#tpls');
     }
   } elseif ($act === 'tpl_view') {   // תצוגה מקדימה של תבנית (על תלמידה לדוגמה) בלי לשמור
     $tpl = ['name' => trim((string)($_POST['name'] ?? '')) ?: 'מסמך', 'title' => trim((string)($_POST['title'] ?? '')), 'body' => trim((string)($_POST['body'] ?? '')), 'align' => ($_POST['align'] ?? 'c') === 'r' ? 'r' : 'c', 'signed' => isset($_POST['signed']) ? 1 : 0];
     $ex = db()->query("SELECT * FROM students WHERE status = 'active' AND archived_at IS NULL ORDER BY name LIMIT 1")->fetch() ?: doc_blank_student();
-    if ($tpl['title'] === '' || $tpl['body'] === '') $err = 'יש למלא כותרת ותוכן לתצוגה מקדימה.'; else $pdfOut(doc_pdf($tpl, $ex, doc_year_start()), 'תצוגה_מקדימה.pdf', true);
+    if ($tpl['body'] === '') $err = 'יש למלא תוכן לתצוגה מקדימה.'; else $pdfOut(doc_pdf($tpl, $ex, doc_year_start()), 'תצוגה_מקדימה.pdf', true);
   } elseif ($act === 'tpl_del') {
     $t = doc_template((int)($_POST['tid'] ?? 0)); if ($t && !$t['builtin']) { db()->prepare('DELETE FROM doc_templates WHERE id = ?')->execute([$t['id']]); audit('doc_tpl_del', 'doc', (string)$t['id'], (string)$t['name']); $msg = 'התבנית נמחקה.'; } else $err = 'לא ניתן למחוק תבנית מובנית.';
   } elseif (in_array($act, ['manual', 'manual_dl', 'manual_send', 'manual_view', 'gen_save', 'gen_dl', 'gen_send', 'gen_view'], true)) {   // מסמך ידני: לתלמידה (נשמר בהיסטוריה שלה) או כללי (ללא שיוך)
     $general = str_starts_with($act, 'gen_'); $stu = $general ? doc_blank_student() : doc_student($sid);
     $title = mb_substr(trim((string)($_POST['title'] ?? '')), 0, 150); $body = trim((string)($_POST['body'] ?? '')); $to = trim((string)($_POST['email'] ?? ''));
-    if (!$stu) $done(false, 'התלמידה לא נמצאה.'); elseif ($title === '' || $body === '') $done(false, 'יש למלא כותרת ותוכן למסמך.');
+    if (!$stu) $done(false, 'התלמידה לא נמצאה.'); elseif ($body === '') $done(false, 'יש למלא תוכן למסמך.');
     else {
       $tpl = ['id' => 0, 'name' => $title, 'title' => $title, 'body' => $body, 'align' => ($_POST['align'] ?? 'r') === 'c' ? 'c' : 'r', 'signed' => isset($_POST['signed']) ? 1 : 0];
       if (str_ends_with($act, '_view')) $pdfOut(doc_pdf($tpl, $stu, $ysel()), doc_filename($tpl, $stu), true);   // תצוגה מקדימה בלבד: לא נשמר בהיסטוריה
@@ -42,6 +43,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $done($ok, $ok ? $saved . ' ונשלח אל ' . $to . '.' : $saved . ', אך השליחה נכשלה: ' . $er);
       } else $done(true, $saved . '.');
     }
+  } elseif (in_array($act, ['wa', 'manual_wa', 'gen_wa', 'h_wa'], true)) {   // שליחה בוואטסאפ: המסמך נשמר בהיסטוריה, נוצר קישור זמני, ונפתח וואטסאפ עם הודעה מוכנה
+    $waErr = function (string $t) use ($back, $done) { $done(false, $t); };
+    if (!doc_links_ready()) $waErr('כדי לשלוח בוואטסאפ יש להריץ "עדכון מסד נתונים" (תחזוקה).');
+    $stu = null; $hid = 0; $tplx = null; $ys = $ysel();
+    if ($act === 'h_wa') {
+      $h = doc_hist_get((int)($_POST['hid'] ?? 0)); $stu = $h ? ((int)$h['student_id'] ? doc_student((int)$h['student_id']) : doc_blank_student()) : null;
+      if (!$h || !$stu) $waErr('המסמך לא נמצא.'); $hid = (int)$h['id']; $tplx = doc_hist_tpl($h); $ys = (int)$h['year'];
+    } elseif ($act === 'wa') {
+      $tpl = doc_template((int)($_POST['tid'] ?? 0)); $aud = (string)($_POST['aud'] ?? ''); if (preg_match('/^s:(\d+)$/', $aud, $m)) $sid = (int)$m[1];
+      $stu = $sid > 0 ? doc_student($sid) : null; if (!$tpl || !$stu) $waErr('לשליחה בוואטסאפ יש לבחור מסמך ותלמידה בודדת.');
+      $hid = doc_record($stu, $tpl, $ys, $by, 'וואטסאפ'); $tplx = doc_hist_tpl(doc_hist_get($hid));
+    } else {
+      $general = $act === 'gen_wa'; $stu = $general ? doc_blank_student() : doc_student($sid);
+      $title = mb_substr(trim((string)($_POST['title'] ?? '')), 0, 150); $body = trim((string)($_POST['body'] ?? ''));
+      if (!$stu) $waErr('התלמידה לא נמצאה.'); if ($body === '') $waErr('יש למלא תוכן למסמך.');
+      $tplm = ['id' => 0, 'name' => $title !== '' ? $title : 'מסמך', 'title' => $title, 'body' => $body, 'align' => ($_POST['align'] ?? 'r') === 'c' ? 'c' : 'r', 'signed' => isset($_POST['signed']) ? 1 : 0];
+      $hid = doc_record($stu, $tplm, $ys, $by, 'וואטסאפ'); $tplx = doc_hist_tpl(doc_hist_get($hid));
+    }
+    $phone = doc_wa_phone($stu, (string)($_POST['wa_sel'] ?? ''), (string)($_POST['wa_phone'] ?? ''));
+    if ($phone === '') $waErr('לא נמצא מספר טלפון תקין. הקלידי מספר ידנית (למשל 0501234567).');
+    $url = isset($_POST['wa_nolink']) ? '' : doc_link_make($hid); $text = doc_wa_text($tplx, $stu, $url); $wa = wa_url($phone, $text);
+    audit('doc_wa', $stu['id'] ? 'student' : 'doc', (string)($stu['id'] ?: $hid), $tplx['name'] . ' → ' . $phone);
+    page_head('שליחה בוואטסאפ');
+    echo '<h1>שליחה בוואטסאפ</h1><div class="card"><p class="ok">המסמך "' . e($tplx['name']) . '" נשמר בהיסטוריה.</p><p>מספר: <bdi dir="ltr">' . e($phone) . '</bdi></p>'
+       . '<p><a class="btn" id="waopen" data-auto="1" href="' . e($wa) . '" target="_self">פתיחת וואטסאפ עם ההודעה</a></p>'
+       . '<p class="mu">וואטסאפ אמור להיפתח לבד (באפליקציה שבמחשב או בנייד). אם לא, לחצי על הכפתור.' . ($url === '' ? ' ההודעה נשלחת בלי קישור: יש להוריד את ה-PDF ולצרף אותו ידנית בשיחה.' : ' ההודעה כוללת קישור להורדת המסמך בתוקף 14 ימים.') . '</p>'
+       . '<form method="post" action="documents.php" class="inl">' . csrf_field() . '<input type="hidden" name="hid" value="' . $hid . '"><button class="sec" name="act" value="h_dl">הורדת ה-PDF</button></form></div>';
+    page_foot(); exit;
   } elseif (in_array($act, ['h_view', 'h_dl', 'h_send'], true)) {   // מסמך מההיסטוריה
     $h = doc_hist_get((int)($_POST['hid'] ?? 0)); $stu = $h ? ((int)$h['student_id'] ? doc_student((int)$h['student_id']) : doc_blank_student()) : null;
     if (!$h || !$stu) $done(false, 'המסמך לא נמצא.');
@@ -110,12 +139,13 @@ page_head('מסמכים');
       <optgroup label="תלמידה בודדת"><?php foreach ($studs as $s) echo '<option value="s:' . (int)$s['id'] . '">' . e($s['name']) . ' – ' . e(class_label((string)$s['grade'], (string)$s['cls'])) . ($s['email'] !== '' ? ' (' . e($s['email']) . ')' : ' (אין מייל שמור)') . '</option>'; ?></optgroup>
     </select></label>
     <label>מייל אחר לשליחה (לתלמידה בודדת בלבד; אם ריק – נשלח לכתובת השמורה בכרטיס שלה)<input type="email" name="email" maxlength="150" dir="ltr"></label>
+    <label>טלפון לוואטסאפ (לתלמידה בודדת; אם ריק – טלפון האב או האם מהכרטיס)<input name="wa_phone" maxlength="20" dir="ltr" inputmode="tel" placeholder="050-1234567"></label>
   </div>
   <details><summary>נוסח המייל (אופציונלי)</summary>
     <label>נושא<input name="subject" maxlength="190" placeholder="ברירת מחדל: שם המסמך – שם התלמידה"></label>
     <label>תוכן<textarea name="msg" rows="4" placeholder="ברירת מחדל: מצורף {שם המסמך} עבור שם התלמידה. אפשר להשתמש ב-{שם}, {כיתה}, {שנה_עברית}"></textarea></label>
   </details>
-  <p class="bar"><button name="act" value="view" class="sec" formtarget="_blank">תצוגה מקדימה (כל הבחירה)</button> <button name="act" value="dlpdf" class="sec">הורדת PDF אחד</button> <button name="act" value="dl" class="sec">הורדה (ZIP – קובץ לכל תלמידה)</button> <button name="act" value="recips" class="sec">בדיקת נמענים</button> <button name="act" value="send" data-confirm="לשלוח את המסמך במייל לכל התלמידות שנבחרו, לכתובת השמורה בכרטיס של כל אחת?">שליחה במייל לכתובות שבמערכת</button></p>
+  <p class="bar"><button name="act" value="view" class="sec" formtarget="_blank">תצוגה מקדימה (כל הבחירה)</button> <button name="act" value="dlpdf" class="sec">הורדת PDF אחד</button> <button name="act" value="dl" class="sec">הורדה (ZIP – קובץ לכל תלמידה)</button> <button name="act" value="recips" class="sec">בדיקת נמענים</button> <button name="act" value="wa" class="wa" formtarget="_blank" formnovalidate>שליחה בוואטסאפ (תלמידה בודדת)</button> <button name="act" value="send" data-confirm="לשלוח את המסמך במייל לכל התלמידות שנבחרו, לכתובת השמורה בכרטיס של כל אחת?">שליחה במייל לכתובות שבמערכת</button></p>
   <p class="mu">התצוגה המקדימה וה-PDF האחד כוללים עמוד לכל תלמידה בבחירה. השליחה במייל (לכיתה / שכבה / כולן) שולחת לכל תלמידה מסמך משלה לכתובת השמורה בכרטיס שלה, ויוצאת ברקע. תלמידות בלי כתובת מדולגות ומוצגות ברשימה, ואפשר לבדוק מראש מי מקבלת ומי חסרה דרך "בדיקת נמענים".</p>
 </form>
 <?php if (is_array($recips)): $noem = array_filter($recips, fn($r) => !filter_var(trim((string)$r['email']), FILTER_VALIDATE_EMAIL)); ?>
@@ -128,20 +158,21 @@ page_head('מסמכים');
   <p class="mu">מכתב או אישור חופשי עם חתימה אוטומטית, שנשמר בהיסטוריה של המסמכים הכלליים ואפשר להוריד או לשלוח במייל לכל כתובת.</p>
   <div class="fg"><label>כותרת<input name="title" maxlength="150"></label>
   <label>יישור<select name="align"><option value="r">לימין</option><option value="c">למרכז</option></select></label>
-  <label>מייל לשליחה<input type="email" name="email" maxlength="150" dir="ltr"></label></div>
+  <label>מייל לשליחה<input type="email" name="email" maxlength="150" dir="ltr"></label>
+  <label>טלפון לוואטסאפ<input name="wa_phone" maxlength="20" dir="ltr" inputmode="tel" placeholder="050-1234567"></label></div>
   <label>תוכן (כל שורה היא פסקה)<textarea name="body" rows="8"></textarea></label>
   <label class="chk"><input type="checkbox" name="signed" value="1" checked> חתימה וחותמת אוטומטית</label>
   <label class="chk"><input type="checkbox" name="save_tpl" value="1"> לשמור גם כתבנית לשימוש חוזר</label>
-  <p class="bar"><button name="act" value="gen_view" class="sec" formtarget="_blank" formnovalidate>תצוגה מקדימה</button> <button name="act" value="gen_save">יצירה ושמירה בהיסטוריה</button> <button name="act" value="gen_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="gen_send" class="sec">יצירה ושליחה במייל</button></p>
+  <p class="bar"><button name="act" value="gen_view" class="sec" formtarget="_blank" formnovalidate>תצוגה מקדימה</button> <button name="act" value="gen_save">יצירה ושמירה בהיסטוריה</button> <button name="act" value="gen_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="gen_send" class="sec">יצירה ושליחה במייל</button> <button name="act" value="gen_wa" class="wa" formtarget="_blank">יצירה ושליחה בוואטסאפ</button></p>
 </form>
 <?php $gen = doc_general(40); if ($gen): ?>
 <div class="card"><h2>היסטוריית מסמכים כלליים</h2><div class="sc"><table><tr><th>תאריך</th><th>מסמך</th><th>הופק ע"י</th><th>נשלח אל</th><th></th></tr>
   <?php foreach ($gen as $h): ?><tr><td class="n"><?= e(doc_hist_date($h)) ?></td><td><?= e($h['name']) ?></td><td><?= e($h['created_by']) ?></td><td dir="ltr"><?= e($h['sent_to']) ?></td>
     <td><form method="post" class="inl"><?= csrf_field() ?><input type="hidden" name="hid" value="<?= (int)$h['id'] ?>"><button name="act" value="h_view" class="sec" formtarget="_blank">צפייה</button> <button name="act" value="h_dl" class="sec">הורדה</button>
-      <input type="email" name="email" maxlength="150" dir="ltr" aria-label="מייל לשליחה" placeholder="מייל"> <button name="act" value="h_send" class="sec">שליחה</button></form></td></tr><?php endforeach; ?></table></div></div>
+      <input type="email" name="email" maxlength="150" dir="ltr" aria-label="מייל לשליחה" placeholder="מייל"> <button name="act" value="h_send" class="sec">שליחה</button> <input name="wa_phone" maxlength="20" dir="ltr" inputmode="tel" aria-label="טלפון לוואטסאפ" placeholder="טלפון"> <button name="act" value="h_wa" class="wa" formtarget="_blank" formnovalidate>וואטסאפ</button></form></td></tr><?php endforeach; ?></table></div></div>
 <?php endif; ?>
 
-<div class="card"><h2>תבניות מסמכים</h2>
+<div class="card" id="tpls"><h2>תבניות מסמכים</h2>
   <table><tr><th>שם</th><th>כותרת</th><th>חתימה</th><th></th></tr>
   <?php foreach ($tpls as $t): ?><tr><td><?= e($t['name']) ?><?= $t['builtin'] ? ' <span class="mu">(מובנה)</span>' : '' ?></td><td><?= e($t['title']) ?></td><td><?= $t['signed'] ? 'אוטומטית' : '—' ?></td>
     <td><a class="btn sec" href="documents.php?edit=<?= (int)$t['id'] ?>#tpl">עריכה</a>
@@ -152,7 +183,7 @@ page_head('מסמכים');
 <form method="post" class="card docf" id="tpl"><?= csrf_field() ?><input type="hidden" name="tid" value="<?= (int)$t['id'] ?>">
   <h2><?= $t['id'] ? 'עריכת תבנית' : 'מסמך חדש' ?></h2>
   <div class="fg"><label>שם התבנית (לרשימה)<input name="name" required maxlength="100" value="<?= e($t['name']) ?>"></label>
-  <label>כותרת המסמך<input name="title" required maxlength="150" value="<?= e($t['title']) ?>"></label>
+  <label>כותרת המסמך (לא חובה)<input name="title" maxlength="150" value="<?= e($t['title']) ?>"></label>
   <label>יישור הטקסט<select name="align"><option value="r"<?= $t['align'] === 'r' ? ' selected' : '' ?>>לימין (מסמך ארוך)</option><option value="c"<?= $t['align'] === 'c' ? ' selected' : '' ?>>למרכז (כמו אישור לימודים)</option></select></label></div>
   <label>תוכן המסמך (כל שורה היא פסקה)<textarea name="body" rows="9" required><?= e($t['body']) ?></textarea></label>
   <p class="mu">אפשר להכניס פרטי תלמידה אוטומטית: <?php foreach (DOC_PLACEHOLDERS as $k => $v) echo '<bdi dir="ltr"><code>' . e($k) . '</code></bdi> ' . e($v) . ' · '; ?></p>

@@ -10,6 +10,7 @@ $force = in_array('--full', $argv, true) ? 'full' : (in_array('--delta', $argv, 
 foreach ($lines as $l) echo date('Y-m-d H:i:s') . ' ' . $l . "\n";
 if (!$ok) fwrite(STDERR, "ERROR: backup cycle reported a failure\n");
 try { $dn = doc_process(40); if ($dn) echo date('Y-m-d H:i:s') . " נשלחו $dn מסמכים מהתור\n"; } catch (Throwable $t) { fwrite(STDERR, "docs: " . $t->getMessage() . "\n"); }
+try { [$dn2, $de2] = bdrive_sync(40, 45); if ($dn2) echo date('Y-m-d H:i:s') . " גובו $dn2 חשבוניות לדרייב\n"; if ($de2) fwrite(STDERR, "bdrive: $de2\n"); } catch (Throwable $t) { fwrite(STDERR, "bdrive: " . $t->getMessage() . "\n"); }
 try { $bn = bpay_remind_cycle(); if ($bn) echo date('Y-m-d H:i:s') . " נשלחה תזכורת על $bn חשבוניות לתשלום\n"; } catch (Throwable $t) { fwrite(STDERR, "bpay reminders: " . $t->getMessage() . "\n"); }
 try { $rn = rem_cycle(); if ($rn) echo date('Y-m-d H:i:s') . " נשלחו $rn תזכורות גבייה\n"; } catch (Throwable $t) { fwrite(STDERR, "reminders: " . $t->getMessage() . "\n"); }
 exit($ok ? 0 : 1);

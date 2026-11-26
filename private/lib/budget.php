@@ -332,6 +332,24 @@ function budget_filters(): array {
   $mo = (string)($_GET['month'] ?? ''); if (!preg_match('/^\d{4}-\d{2}$/', $mo)) $mo = '';
   return ['y' => $y, 'yr' => $y === null ? 'all' : (string)$y, 'years' => $ys, 'range' => budget_range($y), 'cat' => mb_substr($cat, 0, 100), 'unit' => $unit, 'type' => $type, 'doc' => $doc, 'month' => $mo, 'q' => mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100)];
 }
+/** שם חודש בעברית מתוך YYYY-MM, למשל "נובמבר 2026". */
+function budget_month_label(string $ym): string {
+  static $m = ['', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  return ($m[(int)substr($ym, 5, 2)] ?? $ym) . ' ' . substr($ym, 0, 4);
+}
+/** רשימת חודשים שיש בהם תנועות בטווח השנה (ובמידת הצורך ביחידה): [YYYY-MM => מספר תנועות]. */
+function budget_months(array $f): array {
+  [$wh, $a] = budget_where(['range' => $f['range'] ?? null, 'unit' => $f['unit'] ?? '']);
+  $q = db()->prepare("SELECT DATE_FORMAT(tx_date,'%Y-%m') k, COUNT(*) n FROM budget_tx $wh GROUP BY k ORDER BY k DESC"); $q->execute($a);
+  return array_column($q->fetchAll(), 'n', 'k');
+}
+/** בורר חודש: "כל החודשים" או חודש מסוים. */
+function budget_month_select(array $f): string {
+  $o = '<option value="">כל החודשים</option>'; $ms = budget_months($f);
+  if ($f['month'] !== '' && !isset($ms[$f['month']])) $ms = [$f['month'] => 0] + $ms;
+  foreach ($ms as $k => $n) $o .= '<option value="' . e((string)$k) . '"' . ($f['month'] === (string)$k ? ' selected' : '') . '>' . e(budget_month_label((string)$k)) . ' (' . (int)$n . ')</option>';
+  return '<label>חודש<select name="month">' . $o . '</select></label>';
+}
 function budget_year_select(array $f): string {
   $o = '<option value="all"' . ($f['y'] === null ? ' selected' : '') . '>כל התקופה</option>';
   foreach ($f['years'] as $y) $o .= '<option value="' . $y . '"' . ($f['y'] === $y ? ' selected' : '') . '>שנת ' . e(budget_year_label($y)) . ' (' . $y . '–' . ($y + 1) . ')</option>';

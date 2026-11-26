@@ -19,6 +19,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit('user_create', 'user', $un, 'תפקיד: ' . $role . ', אימות: ' . ($byMail ? 'מייל' : 'אפליקציה')); $msg = 'המשתמשת נוצרה.' . ($byMail ? ' בכניסה היא תקבל קוד במייל.' : ' בכניסה הראשונה היא תגדיר אפליקציית אימות.');
       } catch (PDOException $x) { $err = 'שם המשתמש כבר קיים.'; $errf = 'username'; }
     }
+  } elseif ($act === 'sess') {
+    $uid = (int)($_POST['uid'] ?? 0); $im = (int)($_POST['idle'] ?? 0); $hm = (int)($_POST['maxh'] ?? 0);
+    if (!users_sess_ready()) $err = 'צריך להריץ "עדכון מסד נתונים" תחילה.';
+    elseif (($im !== 0 && ($im < 5 || $im > 720)) || ($hm !== 0 && ($hm < 1 || $hm > 24))) $err = 'חוסר פעילות: 5–720 דקות. משך מרבי: 1–24 שעות. 0 או ריק = ברירת המחדל.';
+    else { db()->prepare('UPDATE users SET sess_idle = ?, sess_max = ? WHERE id = ?')->execute([$im ?: null, $hm ?: null, $uid]); audit('user_session', 'user', (string)$uid, "idle=$im max=$hm"); $msg = 'משך החיבור נשמר. הוא חל מהכניסה הבאה של המשתמשת.'; }
   } elseif ($act === 'toggle' || $act === 'reset' || $act === 'role' || $act === 'reset2fa' || $act === 'mfa') {
     $uid = (int)($_POST['uid'] ?? 0);
     if ($uid === $me['id'] && $act !== 'reset') { $err = 'אי אפשר לשנות את המשתמשת שלך.'; }
@@ -57,8 +62,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $kp = ($err !== '' && ($_POST['act'] ?? '') === 'create') ? $_POST : [];
 $kv = fn(string $k) => e((string)($kp[$k] ?? ''));
 $bad = fn(string $k) => $errf === $k ? ' class="bad" aria-invalid="true"' : '';
+function users_sess_ready(): bool { static $ok = null; if ($ok === null) { try { $ok = (bool)db()->query("SHOW COLUMNS FROM users LIKE 'sess_idle'")->fetch(); } catch (Throwable $t) { $ok = false; } } return $ok; }
 $short = fn(string $l): string => trim((string)preg_replace('/\s*\(.*$/u', '', $l));
-$users = db()->query('SELECT id, username, display_name, role, active, last_login, totp_enabled, mfa_method, mfa_email FROM users ORDER BY id')->fetchAll();
+$users = db()->query('SELECT * FROM users ORDER BY id')->fetchAll();
 page_head('משתמשים');
 ?>
 <h1>משתמשים <span class="mu">(<?= count($users) ?>)</span></h1>
@@ -87,6 +93,10 @@ page_head('משתמשים');
         <button class="sec">עדכון אימות</button></form>
       <?php if ($x['totp_enabled']): ?><form method="post" class="mrow"><?= $hid('reset2fa') ?><span class="mu hint">מאפס את האימות; בכניסה הבאה תוגדר שיטה מחדש.</span><button class="sec">איפוס אימות</button></form><?php endif; ?>
       <?php endif; ?>
+      <?php if (users_sess_ready()): ?><form method="post" class="mrow"><?= $hid('sess') ?>
+        <label>ניתוק אחרי חוסר פעילות (דקות)<input type="number" name="idle" min="0" max="720" inputmode="numeric" dir="ltr" placeholder="<?= (int)(cfg('idle', 1800) / 60) ?>" value="<?= $x['sess_idle'] ? (int)$x['sess_idle'] : '' ?>"></label>
+        <label>משך מרבי ברצף (שעות)<input type="number" name="maxh" min="0" max="24" inputmode="numeric" dir="ltr" placeholder="<?= (int)(cfg('maxage', 28800) / 3600) ?>" value="<?= $x['sess_max'] ? (int)$x['sess_max'] : '' ?>"></label>
+        <button class="sec">עדכון משך חיבור</button><span class="mu hint">ריק = ברירת המחדל. חל מהכניסה הבאה. הניתוק נספר מהפעולה האחרונה בדף, לא מהזמן שהדף פתוח.</span></form><?php endif; ?>
       <form method="post" class="mrow"><?= $hid('reset') ?><label>סיסמה חדשה<input type="password" name="pw" autocomplete="new-password" placeholder="10+ תווים, אותיות וספרות"></label><button class="sec">איפוס סיסמה</button></form>
       <?php if (!$self): ?><form method="post" class="mrow end"><?= $hid('toggle') ?><span class="mu hint"><?= $x['active'] ? 'השבתה מנתקת אותה מיד מכל המכשירים.' : 'הפעלה מחזירה לה אפשרות כניסה.' ?></span><button class="<?= $x['active'] ? 'dg' : '' ?>"><?= $x['active'] ? 'השבתת משתמשת' : 'הפעלת משתמשת' ?></button></form>
       <?php else: ?><p class="mu hint">זה החשבון שלך: תפקיד, אימות והשבתה לא ניתנים לשינוי כאן, כדי שהגישה שלך לא תיחסם בטעות.</p><?php endif; ?>

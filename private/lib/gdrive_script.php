@@ -24,6 +24,18 @@ function doPost(e) {
       if (resp.getResponseCode() !== 200 || !loc) return out_({ ok: false, error: 'פתיחת העלאה נכשלה (' + resp.getResponseCode() + ')' });
       return out_({ ok: true, url: loc });
     }
+    if (r.action === 'inv_init') {
+      const sub_ = function (parent, name) { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); };
+      const mf = sub_(sub_(folder, String(r.root)), String(r.month));
+      const resp = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true', {
+        method: 'post', contentType: 'application/json; charset=UTF-8', muteHttpExceptions: true,
+        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken(), 'X-Upload-Content-Type': 'application/octet-stream', 'X-Upload-Content-Length': String(r.size) },
+        payload: JSON.stringify({ name: String(r.name), parents: [mf.getId()] })
+      });
+      const h = resp.getAllHeaders(); const loc = h['Location'] || h['location'];
+      if (resp.getResponseCode() !== 200 || !loc) return out_({ ok: false, error: 'פתיחת העלאה נכשלה (' + resp.getResponseCode() + ')' });
+      return out_({ ok: true, url: loc });
+    }
     if (r.action === 'list') {
       const files = []; const it = folder.getFiles();
       while (it.hasNext()) { const f = it.next(); if (/^alma-(backup|delta)-/.test(f.getName())) files.push({ id: f.getId(), name: f.getName(), size: f.getSize() }); }

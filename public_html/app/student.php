@@ -272,7 +272,9 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
     <label>מסמך<select name="tid"><?php foreach ($dgt as $t) echo '<option value="' . (int)$t['id'] . '">' . e($t['name']) . '</option>'; ?></select></label>
     <label>שנת לימודים<select name="year"><?php foreach ([$dgy - 1, $dgy, $dgy + 1] as $y) echo '<option value="' . $y . '"' . ($y === $dgy ? ' selected' : '') . '>' . e(doc_heb_year($y)) . ' (' . $y . '-' . ($y + 1) . ')</option>'; ?></select></label>
     <label>מייל לשליחה<input type="email" name="email" maxlength="150" dir="ltr" value="<?= e((string)($row['email'] ?? '')) ?>" placeholder="כתובת מייל"></label>
-    <p class="bar"><button name="act" value="view" class="sec" formtarget="_blank">תצוגה</button> <button name="act" value="dl">הורדה (PDF)</button> <button name="act" value="send" class="sec" data-confirm="לשלוח את המסמך במייל?">שליחה במייל</button></p>
+    <label>טלפון לוואטסאפ<select name="wa_sel"><?php if (!empty($row['f_phone'])) echo '<option value="f">אב: ' . e($row['f_phone']) . '</option>'; if (!empty($row['m_phone'])) echo '<option value="m">אם: ' . e($row['m_phone']) . '</option>'; if (!empty($row['phone'])) echo '<option value="s">תלמידה: ' . e($row['phone']) . '</option>'; ?></select></label>
+    <label>או מספר אחר (ידני)<input name="wa_phone" maxlength="20" dir="ltr" inputmode="tel" placeholder="050-1234567"></label>
+    <p class="bar"><button name="act" value="view" class="sec" formtarget="_blank">תצוגה</button> <button name="act" value="dl">הורדה (PDF)</button> <button name="act" value="send" class="sec" data-confirm="לשלוח את המסמך במייל?">שליחה במייל</button> <button name="act" value="wa" class="wa" formtarget="_blank" formnovalidate>שליחה בוואטסאפ</button></p>
   </form>
   <details><summary>מסמך ידני (כתיבה חופשית)</summary>
     <form method="post" action="documents.php" class="fg docf"><?= csrf_field() ?><input type="hidden" name="student_id" value="<?= (int)$id ?>"><input type="hidden" name="back" value="student.php?id=<?= (int)$id ?>&amp;open=docgen">
@@ -282,15 +284,17 @@ page_head($row ? $row['name'] : 'תלמידה חדשה');
       <p class="mu">פרטים אוטומטיים: <?php foreach (['{שם}', '{תז}', '{כיתה}', '{שנה_עברית}', '{תאריך}'] as $k) echo '<bdi dir="ltr"><code>' . e($k) . '</code></bdi> '; ?></p>
       <label class="chk"><input type="checkbox" name="signed" value="1" checked> חתימה וחותמת אוטומטית</label>
       <label class="chk"><input type="checkbox" name="save_tpl" value="1"> לשמור גם כתבנית לשימוש חוזר</label>
+      <label>טלפון לוואטסאפ<select name="wa_sel"><?php if (!empty($row['f_phone'])) echo '<option value="f">אב: ' . e($row['f_phone']) . '</option>'; if (!empty($row['m_phone'])) echo '<option value="m">אם: ' . e($row['m_phone']) . '</option>'; if (!empty($row['phone'])) echo '<option value="s">תלמידה: ' . e($row['phone']) . '</option>'; ?></select></label>
+    <label>או מספר אחר (ידני)<input name="wa_phone" maxlength="20" dir="ltr" inputmode="tel" placeholder="050-1234567"></label>
       <label>מייל לשליחה (המייל השמור בכרטיס, אפשר לשנות)<input type="email" name="email" maxlength="150" dir="ltr" value="<?= e((string)($row['email'] ?? '')) ?>" placeholder="כתובת מייל"></label>
-      <p class="bar"><button name="act" value="manual_view" class="sec" formtarget="_blank" formnovalidate>תצוגה מקדימה</button> <button name="act" value="manual">יצירה ושמירה בהיסטוריה</button> <button name="act" value="manual_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="manual_send" class="sec">יצירה ושליחה במייל</button></p>
+      <p class="bar"><button name="act" value="manual_view" class="sec" formtarget="_blank" formnovalidate>תצוגה מקדימה</button> <button name="act" value="manual">יצירה ושמירה בהיסטוריה</button> <button name="act" value="manual_dl" class="sec" formnovalidate>יצירה והורדה</button> <button name="act" value="manual_send" class="sec">יצירה ושליחה במייל</button> <button name="act" value="manual_wa" class="wa" formtarget="_blank">יצירה ושליחה בוואטסאפ</button></p>
     </form>
   </details>
   <?php if ($dgh): ?><h3>היסטוריית מסמכים</h3><div class="sc"><table><tr><th>תאריך</th><th>מסמך</th><th>הופק ע"י</th><th>נשלח אל</th><th></th></tr>
     <?php foreach ($dgh as $h): ?><tr><td class="n"><?= e(doc_hist_date($h)) ?></td><td><?= e($h['name']) ?></td><td><?= e($h['created_by']) ?></td><td dir="ltr"><?= e($h['sent_to']) ?></td>
       <td><form method="post" action="documents.php" class="inl"><?= csrf_field() ?><input type="hidden" name="hid" value="<?= (int)$h['id'] ?>"><input type="hidden" name="back" value="student.php?id=<?= (int)$id ?>&amp;open=docgen">
         <button name="act" value="h_view" class="sec" formtarget="_blank">צפייה</button> <button name="act" value="h_dl" class="sec">הורדה</button>
-        <input type="email" name="email" maxlength="150" dir="ltr" value="<?= e((string)($row['email'] ?? '')) ?>" aria-label="מייל לשליחה"> <button name="act" value="h_send" class="sec" data-confirm="לשלוח שוב במייל?">שליחה</button></form></td></tr><?php endforeach; ?></table></div><?php endif; ?>
+        <input type="email" name="email" maxlength="150" dir="ltr" value="<?= e((string)($row['email'] ?? '')) ?>" aria-label="מייל לשליחה"> <button name="act" value="h_send" class="sec" data-confirm="לשלוח שוב במייל?">שליחה</button> <button name="act" value="h_wa" class="wa" formtarget="_blank" formnovalidate>וואטסאפ</button></form></td></tr><?php endforeach; ?></table></div><?php endif; ?>
 <?php sec_close(); endif; ?>
 <?php if ($id && can_see_ids()): ?>
 <?php sec_open('docs', 'מסמכים', count($sfiles) . ' קבצים', '▤'); ?>

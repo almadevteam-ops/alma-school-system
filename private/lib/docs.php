@@ -2,7 +2,7 @@
 declare(strict_types=1);
 // מסמכים אוטומטיים לתלמידות: תבניות, יצירת PDF (עם חתימה אוטומטית) ושליחה במייל (גם לפי כיתות / כל התלמידות).
 require_once __DIR__ . '/pdfdoc.php';
-const DOC_PLACEHOLDERS = ['{שם}' => 'שם התלמידה', '{תז}' => 'תעודת זהות', '{כיתה}' => 'כיתה (למשל י2)', '{שכבה}' => 'שכבה', '{שנה_עברית}' => 'שנת הלימודים בעברית (תשפ"ז)', '{שנה}' => 'שנת הלימודים (2026-2027)', '{תאריך}' => 'תאריך ההפקה', '{סמל_מוסד}' => 'סמל מוסד', '{שם_האב}' => 'שם האב', '{שם_האם}' => 'שם האם', '{כתובת}' => 'כתובת', '{עיר}' => 'עיר'];
+const DOC_PLACEHOLDERS = ['{שם}' => 'שם התלמידה', '{תז}' => 'תעודת זהות', '{כיתה}' => 'כיתה (למשל י2)', '{שכבה}' => 'שכבה', '{שנה_עברית}' => 'שנת הלימודים בעברית (תשפ"ז)', '{שנה}' => 'שנת הלימודים (2026-2027)', '{תאריך}' => 'תאריך ההפקה', '{סמל_מוסד}' => 'סמל מוסד', '{משפחה}' => 'שם משפחה', '{שם_פרטי}' => 'שם פרטי', '{שם_האב}' => 'שם האב', '{שם_האם}' => 'שם האם', '{כתובת}' => 'כתובת', '{עיר}' => 'עיר'];
 
 function docs_ready(): bool {
   static $ok = null;
@@ -18,7 +18,7 @@ function doc_heb_year(int $startYear): string {
   $chars = mb_str_split($out); return count($chars) > 1 ? implode('', array_slice($chars, 0, -1)) . '"' . end($chars) : $out . "'";
 }
 function doc_fill(string $t, array $s, int $ys, string $date): string {
-  $map = ['{שם}' => (string)$s['name'], '{תז}' => (string)($s['idn'] ?? ''), '{כיתה}' => class_label((string)$s['grade'], (string)($s['cls'] ?? '')), '{שכבה}' => (string)$s['grade'], '{שנה_עברית}' => doc_heb_year($ys), '{שנה}' => $ys . '-' . ($ys + 1), '{תאריך}' => $date, '{סמל_מוסד}' => setting_get('inst_symbol', '344580'), '{שם_האב}' => (string)($s['f_name'] ?? ''), '{שם_האם}' => (string)($s['m_name'] ?? ''), '{כתובת}' => (string)($s['addr'] ?? ''), '{עיר}' => (string)($s['city'] ?? '')];
+  $map = ['{שם}' => (string)$s['name'], '{תז}' => (string)($s['idn'] ?? ''), '{כיתה}' => class_label((string)$s['grade'], (string)($s['cls'] ?? '')), '{שכבה}' => (string)$s['grade'], '{שנה_עברית}' => doc_heb_year($ys), '{שנה}' => $ys . '-' . ($ys + 1), '{תאריך}' => $date, '{סמל_מוסד}' => setting_get('inst_symbol', '344580'), '{משפחה}' => (string)(preg_split('/\s+/u', trim((string)$s['name']), 2)[0] ?? ''), '{שם_פרטי}' => (string)(preg_split('/\s+/u', trim((string)$s['name']), 2)[1] ?? ''), '{שם_האב}' => (string)($s['f_name'] ?? ''), '{שם_האם}' => (string)($s['m_name'] ?? ''), '{כתובת}' => (string)($s['addr'] ?? ''), '{עיר}' => (string)($s['city'] ?? '')];
   return strtr($t, $map);
 }
 function doc_templates(): array { return docs_ready() ? db()->query('SELECT * FROM doc_templates ORDER BY builtin DESC, name')->fetchAll() : []; }
@@ -31,9 +31,9 @@ function doc_blank_student(): array { return ['id' => 0, 'name' => '', 'idn' => 
 function doc_render(PdfDoc $d, array $tpl, array $stu, int $ys, string $date): void {
   $center = ($tpl['align'] ?? 'c') !== 'r'; $size = $center ? 20.0 : 15.0; $lh = $center ? 26.0 : 22.0; $cx = 297.64; $rx = 540.0; $maxW = 460.0; $bottom = 700.0;
   $d->addPage(!empty($tpl['signed'])); $d->text($date, 90, 47, 11, 'b', 'l'); $d->text('בס"ד', $cx, 47, 11, 'b', 'c');
-  $y = 241.0;
-  foreach ($d->wrap(doc_fill((string)$tpl['title'], $stu, $ys, $date), 20, $maxW, 'b') as $ln) { $d->text($ln, $cx, $y, 20, 'b', 'c', true); $y += 28; }
-  $y += $center ? 26 : 14;
+  $hasTitle = trim((string)$tpl['title']) !== ''; $y = $hasTitle ? 241.0 : 225.0;
+  if ($hasTitle) { foreach ($d->wrap(doc_fill((string)$tpl['title'], $stu, $ys, $date), 20, $maxW, 'b') as $ln) { $d->text($ln, $cx, $y, 20, 'b', 'c', true); $y += 28; }
+    $y += $center ? 26 : 14; }
   foreach (preg_split('/\R/u', doc_fill((string)$tpl['body'], $stu, $ys, $date)) ?: [] as $para) {
     if (trim($para) === '') { $y += $lh * 0.6; continue; }
     foreach ($d->wrap($para, $size, $maxW, 'r') as $ln) {
@@ -117,4 +117,23 @@ function doc_lazy(): void {
   if (!docs_ready()) return; $k = setting_get('doc_last_run', ''); if ($k !== '' && time() - (int)$k < 60) return;
   if (!(int)db()->query("SELECT COUNT(*) FROM doc_jobs WHERE status = 'pending'")->fetchColumn()) return;
   setting_set('doc_last_run', (string)time(), 'system'); try { doc_process(10); } catch (Throwable $t) {}
+}
+
+// ---- שליחה בוואטסאפ: קישור זמני למסמך + הודעה מוכנה ----
+function doc_links_ready(): bool { static $ok = null; if ($ok === null) { try { $ok = (bool)db()->query("SHOW TABLES LIKE 'doc_links'")->fetch(); } catch (Throwable $t) { $ok = false; } } return $ok; }
+/** יוצר קישור ציבורי (לא ניתן לניחוש) למסמך מההיסטוריה, בתוקף מוגבל. */
+function doc_link_make(int $hist, int $days = 14): string {
+  $tok = bin2hex(random_bytes(20));
+  db()->prepare('INSERT INTO doc_links (token, hist_id, expires_at, created_at) VALUES (?,?,?,?)')->execute([$tok, $hist, date('Y-m-d H:i:s', time() + $days * 86400), now()]);
+  try { db()->prepare('DELETE FROM doc_links WHERE expires_at < ?')->execute([date('Y-m-d H:i:s', time() - 30 * 86400)]); } catch (Throwable $t) {}
+  return 'https://' . (string)cfg('host', 'alma-school.co.il') . '/app/doc_pub.php?t=' . $tok;
+}
+/** בוחר טלפון לשליחה: ידני אם הוקלד, אחרת לפי הבחירה (f/m/s), ואחרת אב ← אם ← תלמידה. מחזיר '' אם אין מספר תקין. */
+function doc_wa_phone(array $stu, string $sel, string $manual): string {
+  $cand = trim($manual) !== '' ? [$manual] : ($sel === 'm' ? [$stu['m_phone'] ?? '', $stu['f_phone'] ?? ''] : ($sel === 's' ? [$stu['phone'] ?? ''] : [$stu['f_phone'] ?? '', $stu['m_phone'] ?? '', $stu['phone'] ?? '']));
+  foreach ($cand as $c) { $n = norm_phone((string)$c); if ($n !== '' && phone_ok($n)) return $n; }
+  return '';
+}
+function doc_wa_text(array $tpl, array $stu, string $url): string {
+  return "שלום רב,\nמצורף מסמך מבית הספר עלמא: " . $tpl['name'] . ((string)$stu['name'] !== '' ? ' עבור ' . $stu['name'] : '') . '.' . ($url !== '' ? "\nלצפייה והורדה: $url\n(הקישור תקף ל-14 ימים)" : '') . "\n\nבברכה,\nהנהלת תיכון עלמא";
 }

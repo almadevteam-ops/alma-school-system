@@ -81,6 +81,8 @@ require_once __DIR__ . '/budget.php';
 require_once __DIR__ . '/budget_pay.php';
 require_once __DIR__ . '/budget_ledger.php';
 require_once __DIR__ . '/budget_plan.php';
+require_once __DIR__ . '/budget_drive.php';
+require_once __DIR__ . '/test_mask.php';
 require_once __DIR__ . '/charge_import.php';
 require_once __DIR__ . '/reminders.php';
 require_once __DIR__ . '/docs.php';
@@ -125,14 +127,14 @@ function session_boot(): void {
   ini_set('session.use_only_cookies', '1');
   ini_set('session.gc_probability', '1');
   ini_set('session.gc_divisor', '50');
-  ini_set('session.gc_maxlifetime', '36000');
+  ini_set('session.gc_maxlifetime', '100000');
   session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => is_https(), 'httponly' => true, 'samesite' => 'Lax']);
   session_start();
   if (isset($_SESSION['uid'])) {
     $ua = hash('sha256', (string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
     $idle = time() - (int)($_SESSION['last'] ?? 0);
     $age = time() - (int)($_SESSION['t0'] ?? 0);
-    if ($idle > (int)cfg('idle', 1800) || $age > (int)cfg('maxage', 28800) || ($_SESSION['ua'] ?? '') !== $ua) {
+    if ($idle > (int)($_SESSION['idle_s'] ?? cfg('idle', 1800)) || $age > (int)($_SESSION['max_s'] ?? cfg('maxage', 28800)) || ($_SESSION['ua'] ?? '') !== $ua) {
       session_wipe();
     } else {
       $_SESSION['last'] = time();
@@ -191,6 +193,8 @@ function finish_login(array $row): never {
   $_SESSION['uid'] = (int)$row['id'];
   $_SESSION['user'] = ['id' => (int)$row['id'], 'username' => $row['username'], 'name' => $row['display_name'], 'role' => $row['role']];
   $_SESSION['pwv'] = (int)$row['pw_ver'];
+  if (!empty($row['sess_idle'])) $_SESSION['idle_s'] = max(300, min(43200, (int)$row['sess_idle'] * 60));
+  if (!empty($row['sess_max'])) $_SESSION['max_s'] = max(3600, min(86400, (int)$row['sess_max'] * 3600));
   $_SESSION['t0'] = $_SESSION['last'] = time();
   $_SESSION['ua'] = hash('sha256', (string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
   $_SESSION['csrf'] = bin2hex(random_bytes(32));
@@ -226,7 +230,7 @@ function page_head(string $title, bool $nav = true): void {
      . '<meta name="robots" content="noindex,nofollow"><title>' . (is_test_env() ? '[בדיקות] ' : '') . e($title) . ' – עלמא</title><link rel="icon" href="/app/assets/favicon.ico?v=' . asset_v('favicon.ico') . '" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="/app/assets/icon-32.png?v=' . asset_v('icon-32.png') . '"><link rel="icon" type="image/png" sizes="192x192" href="/app/assets/icon-192.png?v=' . asset_v('icon-192.png') . '"><link rel="apple-touch-icon" href="/app/assets/apple-touch-icon.png?v=' . asset_v('apple-touch-icon.png') . '"><link rel="manifest" href="/app/assets/manifest.json?v=' . asset_v('manifest.json') . '"><meta name="theme-color" content="#7ba23a"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="עלמא"><link rel="stylesheet" href="/app/assets/style.css?v=' . asset_v('style.css') . '"><script src="/app/assets/app.js?v=' . asset_v('app.js') . '" defer></script></head><body' . (is_test_env() ? ' class="envtest"' : '') . '>' . (is_test_env() ? '<div class="envbar">סביבת בדיקות · נתונים מומצאים · לא נשלחות הודעות אמיתיות · <a href="' . e(env_other_url()) . '">מעבר לאתר האמיתי</a></div>' : '');
   if ($nav && ($u = user())) {
     $cur = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
-    $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'income_pending.php' => 'collection.php', 'payments_import.php' => 'collection.php', 'monthly.php' => 'collection.php', 'dashboard.php' => 'collection.php', 'charges.php' => 'collection.php', 'gad.php' => 'collection.php', 'income_import.php' => 'collection.php', 'registrations.php' => 'students.php', 'moe_sync.php' => 'students.php', 'oldsync.php' => 'import.php', 'rollover.php' => 'import.php', 'exports.php' => 'import.php'];
+    $alias = ['student.php' => 'students.php', 'family.php' => 'collection.php', 'payer.php' => 'collection.php', 'collection_import.php' => 'collection.php', 'income_pending.php' => 'collection.php', 'payments_import.php' => 'collection.php', 'monthly.php' => 'collection.php', 'dashboard.php' => 'collection.php', 'charges.php' => 'collection.php', 'gad.php' => 'collection.php', 'income_import.php' => 'collection.php', 'registrations.php' => 'students.php', 'moe_sync.php' => 'students.php', 'phones_import.php' => 'students.php', 'oldsync.php' => 'import.php', 'rollover.php' => 'import.php', 'exports.php' => 'import.php'];
     $on = $alias[$cur] ?? $cur;
     $ic = fn(string $d) => '<svg class="ni" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $d . '</svg>';
     $icons = [
@@ -252,7 +256,7 @@ function page_head(string $title, bool $nav = true): void {
       foreach ([['תקציב', 'budget', $bud], ['ניהול', 'admin', $adm], ['תחזוקה', 'maint', $mnt]] as [$tt, $ik, $set]) {
         echo '<details class="menu' . (isset($set[$on]) ? ' on' : '') . '"><summary title="' . $tt . '">' . $ic($icons[$ik]) . '<span>' . $tt . '</span></summary><div class="dd">';
         foreach ($set as $f => $l) echo '<a href="' . $f . '"' . ($f === $on ? ' class="on"' : '') . '>' . e($l) . '</a>';
-        if ($ik === 'maint') echo '<a href="' . e(env_other_url()) . '" class="envlnk">' . (is_test_env() ? 'חזרה לאתר האמיתי' : 'סביבת בדיקות') . '</a>' . (is_test_env() ? '<a href="testmail.php"' . ($on === 'testmail.php' ? ' class="on"' : '') . '>תיבת דואר בדיקות</a>' : '');
+        if ($ik === 'maint') echo '<a href="' . e(env_other_url()) . '" class="envlnk">' . (is_test_env() ? 'חזרה לאתר האמיתי' : 'סביבת בדיקות') . '</a>' . (is_test_env() ? '<a href="testmail.php"' . ($on === 'testmail.php' ? ' class="on"' : '') . '>תיבת דואר בדיקות</a><a href="test_data.php"' . ($on === 'test_data.php' ? ' class="on"' : '') . '>נתוני בדיקות</a>' : '');
         echo '</div></details>';
       }
     }
